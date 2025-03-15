@@ -5,3 +5,5 @@ sentence-transformers
 nltk
 torch
 anthropic
+dotenv
+snowflake
