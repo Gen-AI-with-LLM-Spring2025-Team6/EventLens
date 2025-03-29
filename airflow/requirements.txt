@@ -1,0 +1,17 @@
+openai
+pinecone-client
+langchain-openai
+langchain
+langchain-core
+bs4
+langchain-community
+langchain-pinecone
+boto3
+gitpython
+snowflake-connector-python
+requests
+pandas
+selenium
+webdriver-manager
+apify-client
+opencv-python-headless
