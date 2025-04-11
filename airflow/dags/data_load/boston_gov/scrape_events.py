@@ -105,7 +105,7 @@ def scrape_boston_gov(**context):
         event_details_list = []
         
         # Limit to 5 events for testing
-        event_count = min(5, len(df_events))
+        event_count =len(df_events)
         logger.info(f"Processing {event_count} events in detail")
         
         for index, row in df_events.head(event_count).iterrows():
@@ -218,6 +218,7 @@ def scrape_boston_gov(**context):
             
         # Convert to DataFrame
         df_events_details = pd.DataFrame(event_details_list)
+        print(df_events_details)
         
         # Create temp directory for this website
         site_temp_dir = os.path.join(TEMP_DIR, WEBSITE_NAME)

@@ -8,6 +8,7 @@ import pandas as pd
 import json
 import logging
 from data_load.parameters.parameter_config import TEMP_DIR
+from datetime import datetime
 
 # Website name - defined in the script
 WEBSITE_NAME = "boston_calendar"
@@ -23,15 +24,22 @@ def scrape_boston_calendar(**context):
         DataFrame: Scraped events data
     """
     try:
-        # Boston Calendar URL
-        URL = "https://www.thebostoncalendar.com/events?date=2025-04-28&day=23&month=4&year=2025"
+        # Get today's date
+        today = datetime.today()
+        day = today.day
+        month = today.month
+        year = today.year
+        
+        # Construct the URL dynamically based on the current date
+        URL = f"https://www.thebostoncalendar.com/events?day={day}&month={month}&week=1&year={year}"
+        #URL ="https://www.thebostoncalendar.com/events?date=2025-05-10&day=29&month=5&year=2025"
+        
+        logger.info(f"Scraping events from {URL}")
         
         # Request headers
         HEADERS = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
-        
-        logger.info(f"Scraping events from {URL}")
         
         # Get HTML content
         response = requests.get(URL, headers=HEADERS)
@@ -136,7 +144,7 @@ def scrape_boston_calendar(**context):
 
         # Convert list to DataFrame
         df_events = pd.DataFrame(event_list)
-        df_events = df_events.iloc[0:5]
+        #df_events = df_events.iloc[0:5]
         
         # Create temp directory for this website
         site_temp_dir = os.path.join(TEMP_DIR, WEBSITE_NAME)
@@ -145,6 +153,7 @@ def scrape_boston_calendar(**context):
         # Save DataFrame to file
         output_file = os.path.join(site_temp_dir, 'scraped_events.json')
         df_events.to_json(output_file, orient='records')
+        
         
         logger.info(f"Successfully scraped {len(df_events)} events and saved to {output_file}")
         

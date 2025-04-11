@@ -15,3 +15,5 @@ selenium
 webdriver-manager
 apify-client
 opencv-python-headless
+pyarrow
+futures
