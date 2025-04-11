@@ -1,0 +1,577 @@
+import streamlit as st
+import openai
+from openai import OpenAI
+import pymupdf
+import io
+import re
+import nltk
+import torch
+from sentence_transformers import SentenceTransformer, util
+import anthropic
+import requests
+import json
+
+# Download NLTK tokenizer data
+nltk.download('punkt')
+
+# ---------------------------
+# Document Processing Functions
+# ---------------------------
+def load_document(uploaded_file):
+    """
+    Load document text from an uploaded PDF or TXT file.
+    """
+    if uploaded_file.type == "application/pdf":
+        pdf_data = uploaded_file.read()
+        memory_buffer = io.BytesIO(pdf_data)
+        doc = pymupdf.open(stream=memory_buffer, filetype="pdf")
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        return text
+    elif uploaded_file.type == "text/plain":
+        return uploaded_file.read().decode("utf-8")
+    else:
+        return None
+
+def chunk_text(text, chunk_size=200):
+    """
+    Split the text into chunks of approximately `chunk_size` words.
+    """
+    words = text.split()
+    chunks = []
+    for i in range(0, len(words), chunk_size):
+        chunk = " ".join(words[i:i+chunk_size])
+        chunks.append(chunk)
+    return chunks
+
+# ---------------------------
+# Embedding Functions
+# ---------------------------
+def get_openai_embedding(text, openai_api_key):
+    """
+    Use OpenAI's text-embedding-ada-002 model to get an embedding for a text.
+    """
+    client = OpenAI(api_key=openai_api_key)
+    try:
+        response = client.embeddings.create(
+            input=[text],
+            model="text-embedding-ada-002"
+        )
+        embedding = response.data[0].embedding
+        return torch.tensor(embedding)
+    except Exception as e:
+        st.error(f"Error getting OpenAI embedding: {e}")
+        return None
+
+def get_chunk_embeddings(chunks, embed_model, use_openai_embedding=False, openai_api_key=None):
+    """
+    Generate embeddings for each document chunk.
+    If use_openai_embedding is True and an API key is provided, use OpenAI's model.
+    Otherwise, use the provided SentenceTransformer model.
+    """
+    embeddings = []
+    if use_openai_embedding and openai_api_key:
+        for chunk in chunks:
+            emb = get_openai_embedding(chunk, openai_api_key)
+            if emb is not None:
+                embeddings.append(emb)
+        if embeddings:  # Check if list is not empty before stacking
+            embeddings = torch.stack(embeddings)
+        else:
+            return None
+    else:
+        embeddings = embed_model.encode(chunks, convert_to_tensor=True)
+    return embeddings
+
+def vector_search_for_step(step, chunk_embeddings, chunks, embed_model, top_k=3, use_openai_embedding=False, openai_api_key=None):
+    """
+    For a given reasoning step, compute its embedding (using the chosen method) and then find the top-k
+    most similar document chunks using cosine similarity.
+    """
+    if use_openai_embedding and openai_api_key:
+        step_embedding = get_openai_embedding(step, openai_api_key)
+        if step_embedding is None:  # Handle the case when embedding fails
+            return []
+    else:
+        step_embedding = embed_model.encode(step, convert_to_tensor=True)
+    
+    # Make sure we don't request more items than we have
+    top_k = min(top_k, len(chunks))
+    if top_k == 0:  # No chunks available
+        return []
+        
+    cos_scores = util.cos_sim(step_embedding, chunk_embeddings)[0]
+    top_results = torch.topk(cos_scores, k=top_k)
+    top_chunks = []
+    for score, idx in zip(top_results[0], top_results[1]):
+        top_chunks.append((chunks[idx], score.item()))
+    return top_chunks
+
+# ---------------------------
+# LLM Interaction Functions
+# ---------------------------
+def generate_openai_response(system_prompt, user_prompt, model_name, api_key, max_tokens=300, temperature=0.2):
+    """
+    Generate response using OpenAI models.
+    """
+    client = OpenAI(api_key=api_key)
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        st.error(f"Error with OpenAI API: {e}")
+        return None
+
+def generate_claude_response(system_prompt, user_prompt, model_name, api_key, max_tokens=300, temperature=0.2):
+    """
+    Generate response using Anthropic's Claude models.
+    """
+    client = anthropic.Anthropic(api_key=api_key)
+    try:
+        response = client.messages.create(
+            model=model_name,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature
+        )
+        return response.content[0].text
+    except Exception as e:
+        st.error(f"Error with Claude API: {e}")
+        return None
+
+def generate_llama_response(system_prompt, user_prompt, model_name, api_key, api_url, max_tokens=300, temperature=0.2):
+    """
+    Generate response using Llama models via API.
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+    
+    data = {
+        "model": model_name,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "max_tokens": max_tokens,
+        "temperature": temperature
+    }
+    
+    try:
+        response = requests.post(api_url, headers=headers, data=json.dumps(data))
+        if response.status_code == 200:
+            return response.json()["choices"][0]["message"]["content"]
+        else:
+            st.error(f"Error with Llama API. Status code: {response.status_code}. Message: {response.text}")
+            return None
+    except Exception as e:
+        st.error(f"Error with Llama API: {e}")
+        return None
+
+def generate_llm_response(llm_type, system_prompt, user_prompt, api_key, api_config, max_tokens=300, temperature=0.2):
+    """
+    Route to the appropriate LLM based on the selected type.
+    """
+    if llm_type == "OpenAI":
+        return generate_openai_response(
+            system_prompt, user_prompt, 
+            api_config["model_name"], api_key, 
+            max_tokens, temperature
+        )
+    elif llm_type == "Claude":
+        return generate_claude_response(
+            system_prompt, user_prompt, 
+            api_config["model_name"], api_key, 
+            max_tokens, temperature
+        )
+    elif llm_type == "Llama":
+        return generate_llama_response(
+            system_prompt, user_prompt, 
+            api_config["model_name"], api_key, 
+            api_config["api_url"], max_tokens, temperature
+        )
+    else:
+        st.error(f"Unknown LLM type: {llm_type}")
+        return None
+
+# ---------------------------
+# Chain-of-Thought Reasoning Functions
+# ---------------------------
+def generate_reasoning_steps(question, document_text, llm_type, api_key, api_config):
+    """
+    Generate reasoning steps for answering the question using the selected LLM.
+    """
+    system_prompt = (
+        "You are an expert reasoning agent. Given a question and a document, "
+        "break down the reasoning process into clear, logical steps that would be needed to answer the question. "
+        "Output ONLY the numbered steps without additional explanation or the actual answer."
+    )
+    user_prompt = f"Document: {document_text[:1000]}...\n\nQuestion: {question}\n\nBreak down the reasoning process into steps:"
+    
+    output = generate_llm_response(
+        llm_type, system_prompt, user_prompt, 
+        api_key, api_config, max_tokens=300, temperature=0.2
+    )
+    
+    if output:
+        # Extract numbered steps
+        steps = []
+        for line in output.split('\n'):
+            line = line.strip()
+            if re.match(r'^\d+\.', line):
+                step = re.sub(r'^\d+\.\s*', '', line)
+                steps.append(step)
+        
+        return steps
+    else:
+        return []
+
+def answer_step_with_evidence(step, relevant_chunks, llm_type, api_key, api_config):
+    """
+    Given a reasoning step and relevant chunks, generate an answer for that step.
+    """
+    # Combine chunks into context
+    context = "\n\n".join([chunk for chunk, _ in relevant_chunks])
+    
+    system_prompt = (
+        "You are an expert reasoning agent. Given a reasoning step and relevant context, "
+        "provide a concise answer for that step based solely on the provided context. "
+        "Your answer should be factual and directly tied to the information in the context."
+    )
+    user_prompt = f"Reasoning Step: {step}\n\nContext:\n{context}\n\nAnswer for this step:"
+    
+    return generate_llm_response(
+        llm_type, system_prompt, user_prompt, 
+        api_key, api_config, max_tokens=150, temperature=0.2
+    ) or "Could not generate answer for this step."
+
+def generate_final_answer(question, step_answers, llm_type, api_key, api_config):
+    """
+    Generate a final answer based on all the step answers.
+    """
+    steps_with_answers = "\n\n".join([f"Step: {step}\nAnswer: {answer}" 
+                                     for step, answer in step_answers])
+    
+    system_prompt = (
+        "You are an expert reasoning agent. Given a question and a series of reasoning steps with their answers, "
+        "synthesize a final comprehensive answer to the original question."
+    )
+    user_prompt = f"Question: {question}\n\nReasoning Steps and Answers:\n{steps_with_answers}\n\nFinal Answer:"
+    
+    return generate_llm_response(
+        llm_type, system_prompt, user_prompt, 
+        api_key, api_config, max_tokens=250, temperature=0.2
+    ) or "Could not generate a final answer."
+
+def dummy_generate_steps(question, document_text):
+    """
+    Dummy fallback for generating reasoning steps if no API key is provided.
+    """
+    return [
+        "Identify key information in the document related to the question",
+        "Analyze the relevant sections to extract facts",
+        "Synthesize the information to formulate an answer"
+    ]
+
+# ---------------------------
+# Reflection Module Function (Using an Agent)
+# ---------------------------
+def reflection_agent(step, text_segment, llm_type, api_key, api_config):
+    """
+    Uses the selected LLM with a reflection prompt to extract a sentence from the text_segment
+    that serves as evidence for the given reasoning step.
+    """
+    system_prompt = (
+        "You are an agent helping with the relevance examination. "
+        "Your task is to pick the sentence-level content that could be used as evidence supporting the reasoning step given a text segment. "
+        "You should not make up any sentence but directly extract the sentence from the segment."
+    )
+    user_prompt = (
+        f"Reasoning Step: {step}\n"
+        f"Text Segment: {text_segment}\n\n"
+        "Please extract the sentence from the text segment that best supports the reasoning step. "
+        "Return exactly one sentence from the text segment."
+    )
+    
+    output = generate_llm_response(
+        llm_type, system_prompt, user_prompt, 
+        api_key, api_config, max_tokens=100, temperature=0.0
+    )
+    
+    if output:
+        # Extract the text following "Evidences:" if available
+        if "Evidences:" in output:
+            evidence = output.split("Evidences:")[-1].strip()
+        else:
+            evidence = output.strip()
+        return evidence
+    else:
+        return "Could not extract evidence."
+
+# ---------------------------
+# Correctness Evaluation Function
+# ---------------------------
+def evaluate_correctness(question, final_answer, document_text, llm_type, api_key, api_config):
+    """
+    Uses the selected LLM to evaluate the correctness of the final answer based on the question and document.
+    Returns a score from 0 to 1 indicating correctness.
+    """
+    system_prompt = (
+        "You are an expert evaluator. Your task is to assess the correctness of an answer to a question "
+        "based on information from a document. "
+        "Provide a correctness score between 0 and 1, where 0 means completely incorrect or unsupported, "
+        "and 1 means completely correct and fully supported by the document. "
+        "You must provide your reasoning before giving the final score."
+    )
+    
+    # Truncate document if too long to fit in context
+    doc_preview = document_text[:3000] + ("..." if len(document_text) > 3000 else "")
+    
+    user_prompt = (
+        f"Question: {question}\n\n"
+        f"Answer to evaluate: {final_answer}\n\n"
+        f"Document excerpt: {doc_preview}\n\n"
+        "First provide your reasoning for the evaluation. Then on a new line, "
+        "provide just the correctness score as a decimal between 0 and 1. "
+        "For example: 'Score: 0.85'"
+    )
+    
+    output = generate_llm_response(
+        llm_type, system_prompt, user_prompt, 
+        api_key, api_config, max_tokens=350, temperature=0.2
+    )
+    
+    if output:
+        # Extract the score (assuming it's in format "Score: X.XX")
+        score_match = re.search(r'Score:\s*(\d*\.\d+|\d+)', output)
+        if score_match:
+            score = float(score_match.group(1))
+            # Ensure score is within [0, 1]
+            score = max(0, min(1, score))
+            reasoning = output.split("Score:")[0].strip()
+            return score, reasoning
+        else:
+            # Fallback if regex doesn't match - try to extract any float from the text
+            float_matches = re.findall(r'(\d*\.\d+|\d+)', output)
+            for match in float_matches:
+                try:
+                    score = float(match)
+                    if 0 <= score <= 1:
+                        return score, output.replace(match, "").strip()
+                except:
+                    pass
+            
+            # If no valid score is found
+            return 0.5, "Could not extract a clear score. Default score assigned."
+    else:
+        return 0.5, "Error during evaluation. Default score assigned."
+
+# ---------------------------
+# Main Streamlit App
+# ---------------------------
+def main():
+    st.title("Enhanced EvidenceChat with Multiple LLM Support")
+    st.write("This demo implements an enhanced version of the EvidenceChat pipeline with support for multiple language models. "
+             "It breaks down the reasoning process into steps and provides evidence for each step.")
+
+    # Sidebar: LLM selection and API configuration
+    llm_type = st.sidebar.selectbox(
+        "Select Language Model Provider",
+        ["OpenAI", "Claude", "Llama"]
+    )
+    
+    # API key input based on selected LLM
+    if llm_type == "OpenAI":
+        api_key = st.sidebar.text_input("Enter OpenAI API Key", type="password")
+        api_config = {
+            "model_name": st.sidebar.selectbox(
+                "Select OpenAI Model",
+                ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"]
+            )
+        }
+        use_openai_embed = st.sidebar.checkbox("Use OpenAI for text encoding (text-embedding-ada-002)", value=True)
+    elif llm_type == "Claude":
+        api_key = st.sidebar.text_input("Enter Anthropic API Key", type="password")
+        api_config = {
+            "model_name": st.sidebar.selectbox(
+                "Select Claude Model",
+                ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229", "claude-3-haiku-20240307"]
+            )
+        }
+        use_openai_embed = False
+    elif llm_type == "Llama":
+        api_key = st.sidebar.text_input("Enter Llama API Key", type="password")
+        api_config = {
+            "model_name": st.sidebar.selectbox(
+                "Select Llama Model",
+                ["llama-3-70b", "llama-3-8b", "llama-2-70b"]
+            ),
+            "api_url": st.sidebar.text_input("Llama API Endpoint URL", value="https://api.llama.your-provider.com/v1/chat/completions")
+        }
+        use_openai_embed = False
+    
+    # Additional embedding options
+    if llm_type == "OpenAI":
+        embedding_api_key = api_key
+    else:
+        use_openai_embed = st.sidebar.checkbox("Use OpenAI for embeddings", value=False)
+        if use_openai_embed:
+            embedding_api_key = st.sidebar.text_input("Enter OpenAI API Key for embeddings", type="password")
+        else:
+            embedding_api_key = None
+    
+    # Document upload
+    uploaded_file = st.file_uploader("Upload a document (PDF or TXT)", type=["pdf", "txt"])
+    
+    if uploaded_file is not None:
+        document_text = load_document(uploaded_file)
+        if document_text:
+            with st.expander("Document Preview"):
+                st.write(document_text[:500] + "...")
+            
+            # Chunk the document into pieces
+            chunks = chunk_text(document_text, chunk_size=200)
+            st.write(f"Document split into {len(chunks)} chunks.")
+            
+            # Load the local embedding model (used if not using OpenAI embeddings)
+            embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+            
+            # Create embeddings for all document chunks
+            with st.spinner("Generating embeddings for document chunks..."):
+                chunk_embeddings = get_chunk_embeddings(
+                    chunks, 
+                    embed_model, 
+                    use_openai_embedding=use_openai_embed, 
+                    openai_api_key=embedding_api_key
+                )
+                if chunk_embeddings is None and use_openai_embed:
+                    st.error("Failed to generate OpenAI embeddings. Please check your API key or try using the local embedding model.")
+                    return
+            
+            # Input the question
+            question = st.text_input("Enter your question about the document:")
+            
+            if st.button("Generate Answer"):
+                if question.strip() == "":
+                    st.error("Please enter a valid question.")
+                elif not api_key:
+                    st.error(f"Please provide a valid {llm_type} API key.")
+                else:
+                    st.info(f"Generating reasoning steps using {llm_type}...")
+                    
+                    # Generate reasoning steps
+                    reasoning_steps = generate_reasoning_steps(
+                        question, 
+                        document_text, 
+                        llm_type, 
+                        api_key, 
+                        api_config
+                    )
+                    
+                    if not reasoning_steps:
+                        st.error("Could not generate reasoning steps. Please check your API key and model selection.")
+                        return
+                    
+                    # Process each reasoning step
+                    step_answers = []
+                    
+                    for i, step in enumerate(reasoning_steps, 1):
+                        st.subheader(f"Step {i}: {step}")
+                        
+                        # Find relevant chunks for this step
+                        with st.spinner(f"Finding relevant chunks for step {i}..."):
+                            relevant_chunks = vector_search_for_step(
+                                step,
+                                chunk_embeddings,
+                                chunks,
+                                embed_model,
+                                top_k=3,
+                                use_openai_embedding=use_openai_embed,
+                                openai_api_key=embedding_api_key
+                            )
+                        
+                        if not relevant_chunks:
+                            st.write("No relevant chunks found for this step.")
+                            step_answers.append((step, "No relevant information found."))
+                            continue
+                        
+                        # Generate answer for this step using the relevant chunks
+                        with st.spinner(f"Generating answer for step {i} using {llm_type}..."):
+                            step_answer = answer_step_with_evidence(
+                                step, 
+                                relevant_chunks, 
+                                llm_type, 
+                                api_key, 
+                                api_config
+                            )
+                            step_answers.append((step, step_answer))
+                        
+                        st.write("**Answer for this step:**")
+                        st.write(step_answer)
+                        
+                        # Show evidence for this step
+                        st.write("**Evidence:**")
+                        for j, (chunk_text_str, score) in enumerate(relevant_chunks, 1):
+                            # Call the reflection agent to extract sentence-level evidence
+                            with st.spinner(f"Extracting evidence {j} using {llm_type}..."):
+                                evidence_sentence = reflection_agent(
+                                    step, 
+                                    chunk_text_str, 
+                                    llm_type, 
+                                    api_key, 
+                                    api_config
+                                )
+                            st.write(f"Evidence {j} (similarity score: {score:.2f}): {evidence_sentence}")
+                    
+                    # Generate final answer
+                    st.subheader("Final Answer")
+                    with st.spinner(f"Synthesizing final answer using {llm_type}..."):
+                        final_answer = generate_final_answer(
+                            question, 
+                            step_answers, 
+                            llm_type, 
+                            api_key, 
+                            api_config
+                        )
+                    st.write(final_answer)
+                    
+                    # Evaluate correctness of the answer
+                    st.subheader("Correctness Evaluation")
+                    with st.spinner(f"Evaluating answer correctness using {llm_type}..."):
+                        correctness_score, reasoning = evaluate_correctness(
+                            question, 
+                            final_answer, 
+                            document_text, 
+                            llm_type, 
+                            api_key, 
+                            api_config
+                        )
+                    
+                    # Display correctness score with color coding
+                    score_color = "red" if correctness_score < 0.4 else "orange" if correctness_score < 0.7 else "green"
+                    st.markdown(f"<h3 style='color: {score_color};'>Correctness Score: {correctness_score:.2f}</h3>", unsafe_allow_html=True)
+                    
+                    # Display score as a progress bar
+                    st.progress(correctness_score)
+                    
+                    # Display reasoning for the score
+                    st.subheader("Evaluation Reasoning")
+                    st.write(reasoning)
+        else:
+            st.error("Could not extract text from the uploaded file.")
+
+if __name__ == '__main__':
+    main()
