@@ -12,23 +12,20 @@ from data_load.parameters.parameter_config import (
     SNOWFLAKE_ROLE
 )
 
-# Website specific settings - defined in the script
+# Website specific settings
 WEBSITE_NAME = "boston_gov"
 STAGING_TABLE = f"{WEBSITE_NAME.upper()}_EVENTS_DETAILS"
 
 # Configure logging
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 def get_snowflake_connection():
     """
     Create and return a Snowflake connection
-    
-    Returns:
-        connection: Snowflake connection object
     """
     try:
-        # Connect to Snowflake
-        connection = snowflake.connector.connect(
+        return snowflake.connector.connect(
             user=SNOWFLAKE_USER,
             password=SNOWFLAKE_PASSWORD,
             account=SNOWFLAKE_ACCOUNT,
@@ -38,8 +35,6 @@ def get_snowflake_connection():
             role=SNOWFLAKE_ROLE,
             client_session_keep_alive=True
         )
-        
-        return connection
     except Exception as e:
         logger.error(f"Error connecting to Snowflake: {str(e)}")
         raise
@@ -52,61 +47,67 @@ def load_to_staging(**context):
         # Get the events data file from XCom
         ti = context['ti']
         events_file = ti.xcom_pull(task_ids='process_images', key='events_with_images')
-        
-        # Read events from file
+
+        # Read JSON
         with open(events_file, 'r') as f:
             events = json.load(f)
-            
+        
         # Convert to DataFrame
         df_events = pd.DataFrame(events)
-        
+
         # Connect to Snowflake
         conn = get_snowflake_connection()
         cursor = conn.cursor()
-        
+
         # Full table name
         full_table_name = f"{SNOWFLAKE_SCHEMA}.{STAGING_TABLE}"
-        
-        # Prepare insert query for Boston Gov specific fields
+
+        # Insert query with new structure
         insert_query = f"""
-        INSERT INTO {full_table_name} 
-        (Event_Title, Image_URL, S3_URL, Start_Time, End_Time, Location, Full_Address, 
-         Categories, Admission, Description, Event_URL, Contact, Email, Event_Timings)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO {full_table_name}
+        (
+            Event_Title, Image_URL, S3_URL, Start_Date, End_Date,
+            Start_Time, End_Time, Occurrences, Location, Full_Address,
+            Categories, Admission, Description, Event_URL, Contact, Email
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        
-        # Prepare data for insertion - handle Boston Gov specific fields
+
+        # Prepare data
         data_to_insert = [
-            (row.get('Event_Title', ''), 
-             row.get('Image_URL', ''),
-             row.get('S3_URL', ''),
-             row.get('Start_Time', ''), 
-             row.get('End_Time', ''), 
-             row.get('Location', ''), 
-             row.get('Full_Address', ''), 
-             row.get('Categories', ''), 
-             row.get('Admission', ''), 
-             row.get('Description', ''), 
-             row.get('Event_URL', ''),
-             row.get('Contact', ''),
-             row.get('Email', ''),
-             row.get('Event_Timings', ''))
+            (
+                row.get("Event_Title", ""),
+                row.get("Image_URL", ""),
+                row.get("S3_URL", ""),
+                row.get("Start_Date", ""),
+                row.get("End_Date", ""),
+                row.get("Start_Time", ""),
+                row.get("End_Time", ""),
+                row.get("Occurrences", ""),
+                row.get("Location", ""),
+                row.get("Full_Address", ""),
+                row.get("Categories", ""),
+                row.get("Admission", ""),
+                row.get("Description", ""),
+                row.get("Event_URL", ""),
+                row.get("Contact", ""),
+                row.get("Email", "")
+            )
             for row in events
         ]
-        
+
         # Execute insert
         cursor.executemany(insert_query, data_to_insert)
-        
-        # Commit and close
         conn.commit()
         logger.info(f"Inserted {len(data_to_insert)} records into {full_table_name}")
-        
+
+        # Cleanup
         cursor.close()
         conn.close()
-        
-        # Pass the file path to the next task
+
+        # Pass path to next task
         context['ti'].xcom_push(key='events_staged', value=events_file)
-        
+
     except Exception as e:
         logger.error(f"Error loading to Snowflake staging: {str(e)}")
         raise

@@ -7,6 +7,7 @@ import uuid
 import requests
 from io import BytesIO
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -101,7 +102,7 @@ def classify_event_using_cortex(title, description, address, dates, cursor):
         - Address: {address}
         - Event Dates: {dates}
 
-        Please classify this event into one or more categories from the list above and return the category names as a list.
+        Please classify this event into one or more categories from the list above and return the category names as a list. Strictly no other text or decription except the categories
         """
         query = "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-large', %s)"
         cursor.execute(query, (prompt,))
@@ -174,3 +175,106 @@ def is_event_unique(embedding, cursor, threshold=0.9):
     except Exception as e:
         logger.error(f"Error checking vector similarity: {str(e)}")
         return True
+
+
+
+def classify_event_into_group(title, description, location, categories, cursor):
+    """
+    Classifies an event into one or more of 10 defined categories using Snowflake Cortex.
+
+    Args:
+        title (str): Title of the event.
+        description (str): Description text.
+        location (str): Address or venue.
+        details (str): Additional structured metadata (timing, tags, etc.).
+        cursor: Snowflake DB cursor object.
+
+    Returns:
+        list: Predicted categories (one or more from the defined list).
+    """
+    try:
+        prompt = f"""
+You are an AI assistant helping categorize public events into meaningful groups.
+Each event can belong to **one or more** of the following 10 categories. Below is what each category means:
+
+1. **Arts & Culture** – Art, Exhibitions, Shows, Theater, Museums, History, Photography, Movies
+2. **Food & Drink** – Food, Drinks, Cooking, Tastings, Culinary, Brewery, Wine, Coffee
+3. **Nightlife & Parties** – Nightlife, Bars, Music, DJ, Clubbing, Party, Comedy Show
+4. **Date Ideas** – Date Idea, Rainy Day Ideas, Romantic, Photoworthy, Couples
+5. **Kids & Families** – Kid Friendly, Animals, Farms, Nature, Seasonal, Accessible Spots
+6. **Professional & Networking / Educational** – Business & Professional, Networking, Jobs, Civic Engagement, Classes, Lectures & Conferences, University, Innovation, Virtual, Tech
+7. **Sports & Active Life** – Sports & Active Life, Games, Fitness, Outdoor, Hiking
+8. **Community & Social Good** – LGBTQ+, Social Good, Civic, Volunteering, Pet Friendly
+9. **Fairs, Festivals & Shopping** – Festivals & Fairs, Markets, Shopping, Local Vendors, Seasonal
+10. **Other** – Events that do not fit any of the above categories
+
+Return only the category names (e.g., ["Food & Drink", "Nightlife & Parties"]) without any explanation or extra formatting or description strictly.
+
+Event Details:
+- Title: {title}
+- Description: {description}
+- Location: {location}
+- Additional Info: {categories}
+"""
+
+        query = """
+        SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-large', %s)
+        """
+
+        cursor.execute(query, (prompt,))
+        result = cursor.fetchone()
+
+        if result and result[0]:
+            try:
+                categories = json.loads(result[0])
+                if isinstance(categories, list):
+                    return categories
+            except Exception:
+                return [result[0].strip()]
+        return ["Other"]
+
+    except Exception as e:
+        print(f"Error classifying event: {str(e)}")
+        return ["Other"]
+
+
+def extract_end_date_from_occurrence(occurrence_text: str, cursor, fallback_end_date: str) -> str:
+    """
+    Use Snowflake Cortex to extract the final end date from a recurrence string.
+
+    Returns a date in the format 'Month DD, YYYY'.
+    If no date is found, Cortex says 'Not Available' and we fallback to the existing END_DATE.
+    """
+    try:
+        prompt = f"""
+        You are a scheduling expert. From the following recurring event description,
+        extract the **final end date** in the format: 'Month DD, YYYY' (e.g., July 20, 2025).
+
+        If the description does not mention an explicit end date, say 'Not Available'. Strictly no other explanation or description.
+
+        Recurrence Pattern:
+        {occurrence_text}
+        """
+
+        cortex_query = "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-large', %s)"
+        cursor.execute(cortex_query, (prompt,))
+        result = cursor.fetchone()
+
+        if result and result[0]:
+            response = result[0].strip()
+
+            # Check for 'Not Available'
+            if response.lower() == "not available":
+                return fallback_end_date
+
+            # Match something like 'July 20, 2025'
+            match = re.search(r"(January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}", response)
+            if match:
+               return match.group(0)
+
+        # If response is bad or no match
+        return fallback_end_date
+
+    except Exception as e:
+        print(f"Error extracting end date from occurrence: {e}")
+        return fallback_end_date
