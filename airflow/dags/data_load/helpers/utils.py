@@ -208,7 +208,7 @@ Each event can belong to **one or more** of the following 10 categories. Below i
 9. **Fairs, Festivals & Shopping** – Festivals & Fairs, Markets, Shopping, Local Vendors, Seasonal
 10. **Other** – Events that do not fit any of the above categories
 
-Return only the category names (e.g., ["Food & Drink", "Nightlife & Parties"]) without any explanation or extra formatting or description strictly.
+Return only the category names (e.g., ["Food & Drink", "Nightlife & Parties"]) without any explanation or extra formatting or description strictly. The Output should be only like ["Food & Drink", "Nightlife & Parties"]
 
 Event Details:
 - Title: {title}
