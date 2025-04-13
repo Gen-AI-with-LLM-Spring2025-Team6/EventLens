@@ -76,4 +76,4 @@ load_edw_task = PythonOperator(
 )
 
 # Task dependencies
-scrape_task >> process_images_task >> load_staging_task
+scrape_task >> process_images_task >> load_staging_task >> load_edw_task

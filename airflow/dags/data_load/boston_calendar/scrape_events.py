@@ -79,11 +79,9 @@ def scrape_boston_calendar(**context):
 
             occurrence_tag = event_soup.find("span", style=lambda value: value and "color:#1997f3" in value)
             occurrences = occurrence_tag.get_text(strip=True) if occurrence_tag else "No Occurrences"
-            print(start_date)
-            print(end_date)
-            print(start_time)
-            print(end_time)
-            print(occurrences)
+
+            if ((start_date != end_date) and (occurrences.strip().lower() == 'no occurrences')):
+                occurrences = "Everyday"
 
             # Address
             location_name_tag = event_soup.find("span", itemprop="name")
