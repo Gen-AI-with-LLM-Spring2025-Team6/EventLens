@@ -62,6 +62,10 @@ def load_to_staging(**context):
         # Full table name
         full_table_name = f"{SNOWFLAKE_SCHEMA}.{STAGING_TABLE}"
 
+        # Truncate the table before inserting
+        cursor.execute(f"TRUNCATE TABLE {full_table_name}")
+        logger.info(f"Truncated table {full_table_name}")
+
         # Insert query with new structure
         insert_query = f"""
         INSERT INTO {full_table_name}

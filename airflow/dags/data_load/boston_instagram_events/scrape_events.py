@@ -41,7 +41,7 @@ def scrape_instagram_events(**context):
         run_input = {
             "directUrls": direct_urls,
             "resultsType": "posts",
-            "resultsLimit": 2,
+            "resultsLimit": 1,
             "searchType": "hashtag",
             "searchLimit": 1,
             "addParentData": False,
