@@ -11,6 +11,7 @@ from data_load.boston_gov.scrape_events import scrape_boston_gov, WEBSITE_NAME
 from data_load.boston_gov.process_images import process_images
 from data_load.boston_gov.load_to_staging import load_to_staging
 from data_load.boston_gov.load_to_edw import load_to_edw
+from data_load.connectors.s3_connection import create_s3_logging_connection
 
 # Metrics
 from data_load.helpers.metrics import start_task_metrics, end_task_metrics
@@ -34,6 +35,8 @@ dag = DAG(
     schedule_interval=None,
     catchup=False,
 )
+
+create_s3_logging_connection()
 
 # Task 1: Scrape events
 scrape_task = PythonOperator(

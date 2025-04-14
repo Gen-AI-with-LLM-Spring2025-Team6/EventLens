@@ -10,6 +10,7 @@ from data_load.boston_instagram_events.scrape_events import scrape_instagram_eve
 from data_load.boston_instagram_events.process_media import process_media
 from data_load.boston_instagram_events.load_to_staging import load_to_staging
 from data_load.boston_instagram_events.load_to_edw import load_to_edw
+from data_load.connectors.s3_connection import create_s3_logging_connection
 
 # Metrics
 from data_load.helpers.metrics import start_task_metrics, end_task_metrics
@@ -33,6 +34,8 @@ dag = DAG(
     schedule_interval=None,
     catchup=False,
 )
+
+create_s3_logging_connection()
 
 # Task 1: Scrape events from Instagram
 scrape_task = PythonOperator(
