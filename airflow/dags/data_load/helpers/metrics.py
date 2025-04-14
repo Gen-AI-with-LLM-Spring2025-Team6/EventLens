@@ -1,5 +1,5 @@
 from datetime import datetime
-from data_load.connectors.db_connection import get_snowflake_connection
+from data_load.connectors.db_connection import get_snowflake_connection_metrics
 
 def start_task_metrics(context):
     task_instance = context['task_instance']
@@ -23,12 +23,13 @@ def end_task_metrics(context):
     start_time_str = task_instance.xcom_pull(key=f"{task_id}_start_time")
     start_time = datetime.fromisoformat(start_time_str)
 
-    status = "succeeded" if context['ti'].state == "success" else "failed"
+    status = "succeeded" if context['ti'].state == "SUCCESS" else "FAILED"
     dw_load_time = datetime.now()
 
     try:
-        conn = get_snowflake_connection()
+        conn = get_snowflake_connection_metrics()
         cursor = conn.cursor()
+        
 
         insert_query = """
         INSERT INTO EDW.EVENTLENS_METRICS

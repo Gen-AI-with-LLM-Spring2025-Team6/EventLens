@@ -44,12 +44,12 @@ def load_to_edw(**context):
         for record in records:
             # Step 3: Media description
             media_parts = []
-            if record.get("S3_IMAGE_URL"):
+            if record.get("IMAGE_URL"):
                 try:
                     media_parts.append("Image: " + describe_image(record["IMAGE_URL"]))
                 except Exception as e:
                     logger.warning(f"Image description failed: {e}")
-            if record.get("S3_VIDEO_URL"):
+            if record.get("VIDEO_URL"):
                 try:
                     media_parts.append("Video: " + describe_video_from_url(record["VIDEO_URL"]))
                 except Exception as e:
@@ -60,7 +60,7 @@ def load_to_edw(**context):
             combined_desc = f"{original_desc}\n\n--- Media Analysis ---\n{media_description}" if media_description else original_desc
             record["DESCRIPTION"] = combined_desc
 
-            # Step 4: Structured fields from full description
+            # Step 4: Extract structured fields
             structured = extract_event_fields_from_combined_text(combined_desc, cursor)
             record.update(structured)
 
@@ -73,7 +73,7 @@ def load_to_edw(**context):
                 cursor=cursor
             ))
 
-            # Step 6: Occurrences (static for now or add later)
+            # Step 6: Static fallback for OCCURRENCES
             record["OCCURRENCES"] = "Not Available"
 
             enriched_records.append(record)
@@ -81,24 +81,28 @@ def load_to_edw(**context):
         # Step 7: Convert to DataFrame
         df = pd.DataFrame(enriched_records)
 
+        # Step 8: Build COMBINED_TEXT excluding all URLs
         def build_combined_text(row):
-            keys = ["EVENT_TITLE", "START_DATE", "END_DATE", "LOCATION", "FULL_ADDRESS", "CATEGORIES", "ADMISSION", "DESCRIPTION"]
+            keys = [
+                "EVENT_TITLE", "START_DATE", "END_DATE", "START_TIME", "END_TIME",
+                "LOCATION", "FULL_ADDRESS", "CATEGORIES", "ADMISSION", "DESCRIPTION"
+            ]
             return " | ".join([
-                f"{k.replace('_', ' ').title()}: {row[k]}" 
+                f"{k.replace('_', ' ').title()}: {row[k]}"
                 for k in keys if row.get(k) and row[k] != "Not Available"
             ])
 
         df["COMBINED_TEXT"] = df.apply(build_combined_text, axis=1)
 
-        # Step 8: Structure and embed
+        # Step 9: Structure and embed
         df = parallelize_structuring_and_embedding(df, cursor)
 
-        # Step 9: Add metadata
+        # Step 10: Add metadata
         df["SOURCE_WEBSITE"] = WEBSITE_NAME
         df["IMAGE_S3_URL"] = df.get("S3_IMAGE_URL").fillna(df.get("S3_VIDEO_URL"))
         df.columns = df.columns.str.upper()
 
-        # Step 10: Final EDW schema
+        # Step 11: Final EDW schema columns
         edw_columns = [
             "EVENT_TITLE", "IMAGE_S3_URL", "START_DATE", "END_DATE", "START_TIME", "END_TIME",
             "OCCURRENCES", "LOCATION", "FULL_ADDRESS", "CATEGORIES", "ADMISSION", "DESCRIPTION",

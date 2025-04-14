@@ -136,6 +136,7 @@ def scrape_boston_calendar(**context):
             })
 
         df_events = pd.DataFrame(event_list)
+        df_events= df[1:20]
         os.makedirs(TEMP_DIR, exist_ok=True)
         output_file = os.path.join(TEMP_DIR, WEBSITE_NAME, 'scraped_events.json')
         os.makedirs(os.path.dirname(output_file), exist_ok=True)

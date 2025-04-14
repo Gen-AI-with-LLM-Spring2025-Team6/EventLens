@@ -511,16 +511,9 @@ def extract_video_frames_base64(video_content: bytes):
         print(f"Frame extraction error: {e}")
         return []
 
-
 def describe_video_from_url(video_url: str) -> str:
     """
-    Uses OpenAI to describe a video by analyzing up to 6 frames.
-
-    Args:
-        video_url (str): URL to the video
-
-    Returns:
-        str: Description of video content
+    Uses OpenAI to describe a video by analyzing evenly spaced frames (up to 6).
     """
     try:
         if not OPENAI_API_KEY:
@@ -531,12 +524,12 @@ def describe_video_from_url(video_url: str) -> str:
         if not video_content:
             return "No video description (unable to download video)"
 
-        print("Extracting frames...")
-        frames = extract_video_frames_base64(video_content)
+        print("Extracting evenly spaced frames...")
+        frames = extract_video_frames_base64(video_content, frames_to_extract=6)
         if not frames:
             return "No video description (could not extract frames)"
 
-        print(f"{len(frames)} total frames, sending first 6 to OpenAI")
+        print(f"{len(frames)} frames selected for OpenAI")
 
         client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -556,7 +549,7 @@ def describe_video_from_url(video_url: str) -> str:
                 {
                     "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{frame}"}
-                } for frame in frames[:6]  # Limit to 6 frames for prompt size
+                } for frame in frames
             ]
         }]
 
