@@ -10,3 +10,4 @@ boto3
 snowflake-sqlalchemy
 langchain-community 
 langchain-anthropic
+pydantic[email]

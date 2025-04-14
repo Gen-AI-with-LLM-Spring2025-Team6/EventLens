@@ -3,6 +3,9 @@ import snowflake.connector
 from snowflake.connector.errors import Error as SnowflakeError
 from typing import Optional
 
+from dotenv import load_dotenv
+
+load_dotenv()
 # Get Snowflake credentials from environment variables
 SNOWFLAKE_USER = os.getenv("SNOWFLAKE_USER")
 SNOWFLAKE_PASSWORD = os.getenv("SNOWFLAKE_PASSWORD")

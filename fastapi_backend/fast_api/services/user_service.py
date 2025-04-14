@@ -2,7 +2,7 @@ import os
 import snowflake.connector
 from fastapi import HTTPException, status
 import pandas as pd
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from fastapi_backend.fast_api.config.db_connection import snowflake_connection, close_connection
 

@@ -13,7 +13,8 @@ RUN pip install --no-cache-dir -r /code/requirements.txt
 # Copy application code
 COPY ./fastapi_backend /code/fastapi_backend
 COPY ./streamlit_frontend /code/streamlit_frontend
-COPY ./logging_module /code/logging_module
+COPY .env /code/.env
+
 
 ENV PYTHONPATH="/code:${PYTHONPATH}"
 
