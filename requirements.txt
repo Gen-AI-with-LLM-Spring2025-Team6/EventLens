@@ -1,0 +1,13 @@
+streamlit
+fastapi
+uvicorn
+snowflake-connector-python
+requests
+pydantic
+langgraph
+langchain
+boto3
+snowflake-sqlalchemy
+langchain-community 
+langchain-anthropic
+pydantic[email]
