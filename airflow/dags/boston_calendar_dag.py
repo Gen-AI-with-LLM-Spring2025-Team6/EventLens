@@ -8,6 +8,7 @@ from data_load.boston_calendar.scrape_events import scrape_boston_calendar, WEBS
 from data_load.boston_calendar.process_images import process_images
 from data_load.boston_calendar.load_to_staging import load_to_staging
 from data_load.boston_calendar.load_to_edw import load_to_edw
+from data_load.connectors.s3_connection import create_s3_logging_connection
 
 # Modular metric tracking
 from data_load.helpers.metrics import start_task_metrics, end_task_metrics
@@ -30,6 +31,8 @@ dag = DAG(
     schedule_interval=None,
     catchup=False,
 )
+
+create_s3_logging_connection()
 
 # Task 1: Scrape events
 scrape_task = PythonOperator(
