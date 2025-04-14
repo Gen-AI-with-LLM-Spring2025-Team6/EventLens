@@ -600,13 +600,13 @@ def scrape_events(max_events=5, continue_from_last=True):
         # Still try to save what we have
         if all_event_data:
             df = pd.DataFrame(all_event_data)
-            df.to_csv('boston_events_partial.csv', index=False)
+            df.to_csv('files/boston_events_partial.csv', index=False)
             logger.info(f"Saved partial results ({len(df)} events) to boston_events_partial.csv")
         return None
 
 if __name__ == "__main__":
     # Set the maximum number of events to scrape
-    MAX_EVENTS = 99999
+    MAX_EVENTS = 9999
     
     # Run the scraper
     result = scrape_events(max_events=MAX_EVENTS, continue_from_last=True)
