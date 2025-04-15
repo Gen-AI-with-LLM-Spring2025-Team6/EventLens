@@ -22,7 +22,7 @@ def fetch_user_by_email(email: str) -> Optional[pd.DataFrame]:
 
         select_query = """
         SELECT *
-        FROM USERDETAILSGITHUB
+        FROM USERDETAILS
         WHERE useremail = %s
         """
 
@@ -63,7 +63,7 @@ def fetch_user(username: str) -> Optional[pd.DataFrame]:
 
         select_query = """
         SELECT *
-        FROM USERDETAILSGITHUB
+        FROM USERDETAILS
         WHERE username = %s
         """
 
@@ -103,7 +103,7 @@ def insert_user(username: str, email: str, password: str, interests: List[str]) 
         cursor = conn.cursor()
 
         insert_query = """
-        INSERT INTO USERDETAILSGITHUB (username, useremail, userpassword,interests)
+        INSERT INTO USERDETAILS (username, useremail, userpassword,interests)
         VALUES (%s, %s, %s, %s)
         """
 
