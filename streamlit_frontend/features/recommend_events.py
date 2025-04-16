@@ -1,6 +1,9 @@
 import streamlit as st
 import requests
 import os
+from PIL import Image
+from io import BytesIO
+from utils.s3_retreival import convert_s3_to_https
 
 FAST_API_URL = os.getenv("FAST_API_URL")
 
@@ -28,14 +31,20 @@ def recommend_events():
                 with st.container():
                     st.subheader(event.get("EVENT_TITLE", "Untitled Event"))
 
-                    # Optional Image (as URL)
+                    # Optional Image (fetch and render from URL)
                     image_url = event.get("IMAGE_S3_URL")
+                    image_url = convert_s3_to_https(image_url)
                     if image_url:
-                        st.markdown(f"📷 **Image URL:** {image_url}")
-                        # Optionally uncomment to preview:
-                        # st.image(image_url, width=400)
+                        try:
+                            response = requests.get(image_url)
+                            if response.status_code == 200:
+                                image = Image.open(BytesIO(response.content))
+                                st.image(image, width=600, caption="")
+                            else:
+                                st.warning(f"Image not accessible: {image_url}")
+                        except Exception as e:
+                            st.warning(f"Image failed to load: {image_url}")
 
-                    # Display event fields only if they exist
                     fields = [
                         ("START_DATE", "Start Date"),
                         ("START_TIME", "Start Time"),
@@ -50,30 +59,28 @@ def recommend_events():
                     if field_display:
                         st.markdown(" | ".join(field_display))
 
-                    # Description
                     if event.get("DESCRIPTION"):
                         st.markdown(f"**Description:** {event['DESCRIPTION']}")
 
-                    # Event URL button
                     event_url = event.get("EVENT_URL")
                     if event_url:
                         st.markdown(
-                                    f"""
-                                        <a href="{event_url}" target="_blank">
-                                            <button style='
-                                                background-color:#4CAF50;
-                                                color:white;
-                                                padding:10px 20px;
-                                                margin-top:10px;
-                                                border:none;
-                                                border-radius:8px;
-                                                cursor:pointer;
-                                                font-size:16px;
-                                            '>🔗 Visit Event Page</button>
-                                        </a>
-                                        """,
-                                        unsafe_allow_html=True
-                                    )
+                            f"""
+                            <a href="{event_url}" target="_blank">
+                                <button style='
+                                    background-color:#4CAF50;
+                                    color:white;
+                                    padding:10px 20px;
+                                    margin-top:10px;
+                                    border:none;
+                                    border-radius:8px;
+                                    cursor:pointer;
+                                    font-size:16px;
+                                '>🔗 Visit Event Page</button>
+                            </a>
+                            """,
+                            unsafe_allow_html=True
+                        )
 
                     st.markdown("---")
         else:
