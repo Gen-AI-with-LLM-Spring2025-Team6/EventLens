@@ -2,12 +2,23 @@ from streamlit_modal import Modal
 import streamlit as st
 import requests
 import os
-from PIL import Image
+from PIL import Image, ImageOps
 from io import BytesIO
 from utils.s3_retreival import convert_s3_to_https
 
 FAST_API_URL = os.getenv("FAST_API_URL")
 DEFAULT_IMAGE_URL = "https://as2.ftcdn.net/jpg/02/16/94/65/1000_F_216946587_rmug8FCNgpDCPQlstiCJ0CAXJ2sqPRU7.jpg"
+
+def load_and_resize_image(url, width=200, height=160):
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            img = Image.open(BytesIO(response.content)).convert("RGB")
+            resized = ImageOps.fit(img, (width, height), method=Image.Resampling.LANCZOS)
+            return resized
+    except Exception:
+        pass
+    return None
 
 def search_events():
     st.title("🔍 Search Events")
@@ -15,7 +26,6 @@ def search_events():
 
     modal = Modal(key="details_modal", title="📅 Event Details", padding=20)
 
-    # Initialize session state
     if "selected_event" not in st.session_state:
         st.session_state.selected_event = None
     if "search_results" not in st.session_state:
@@ -27,7 +37,11 @@ def search_events():
     if query and search_button:
         with st.spinner("Searching events..."):
             try:
-                response = requests.post(f"{FAST_API_URL}/events/search", json={"query": query})
+                headers = {
+                    "Authorization": f"Bearer {st.session_state.token}" 
+                }
+                response = requests.post(f"{FAST_API_URL}/events/search", json={"query": query}, headers=headers)
+
                 if response.status_code == 200:
                     events = response.json().get("events", [])
                     st.session_state.search_results = events
@@ -49,18 +63,15 @@ def search_events():
         for idx, event in enumerate(events):
             col = rows[idx // 4][idx % 4]
             with col:
-                image_url = event.get("IMAGE_S3_URL", "")
-                image_url = convert_s3_to_https(image_url) if image_url else DEFAULT_IMAGE_URL
+                raw_url = event.get("IMAGE_S3_URL", "")
+                image_url = convert_s3_to_https(raw_url) if raw_url else DEFAULT_IMAGE_URL
+                image = load_and_resize_image(image_url)
 
-                try:
-                    img_response = requests.get(image_url)
-                    if img_response.status_code == 200:
-                        image = Image.open(BytesIO(img_response.content))
-                        st.image(image, width=180, caption=event.get("EVENT_TITLE", "Untitled"))
-                    else:
-                        st.image(DEFAULT_IMAGE_URL, width=180, caption="Default Image")
-                except:
-                    st.image(DEFAULT_IMAGE_URL, width=180, caption="Image Failed to Load")
+                if image:
+                    st.image(image, caption=event.get("EVENT_TITLE", "Untitled"))
+                else:
+                    fallback = load_and_resize_image(DEFAULT_IMAGE_URL)
+                    st.image(fallback, caption="Image Unavailable")
 
                 if st.button("More Details", key=f"details_{idx}"):
                     st.session_state.selected_event = event
