@@ -27,7 +27,7 @@ def end_task_metrics(context):
     start_time_str = task_instance.xcom_pull(key=f"{task_id}_start_time")
     start_time = datetime.fromisoformat(start_time_str)
 
-    status = "succeeded" if context['ti'].state == "SUCCESS" else "FAILED"
+    status = "SUCCEEDED" if context['ti'].state == "success" else "FAILED"
     dw_load_time = datetime.now()
 
     # Construct S3 Log URL

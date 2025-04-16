@@ -32,11 +32,11 @@ def landing_page():
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Login"):
+        if st.button("🔐 Login"):
             st.session_state.current_page = 'login'
             st.rerun()
     with col2:
-        if st.button("Register"):
+        if st.button("📝 Register"):
             st.session_state.current_page = 'register'
             st.rerun()
 
@@ -59,19 +59,23 @@ elif st.session_state.current_page == 'search':
 elif st.session_state.current_page == 'chatbot':
     events_chatbot()
 
-# Sidebar Navigation
+# Sidebar Navigation for Logged-in Users
 if st.session_state.get("logged_in", False):
     with st.sidebar:
-        st.title(f"Hi, {st.session_state.get('user_name', 'User')}")
+        st.title(f"👋 Hi, {st.session_state.get('user_name', 'User')}")
+
         if st.button("🎯 Recommend Events"):
             st.session_state.current_page = 'recommend'
             st.rerun()
+
         if st.button("🔍 Search Events"):
             st.session_state.current_page = 'search'
             st.rerun()
+
         if st.button("💬 Event Chatbot"):
             st.session_state.current_page = 'chatbot'
             st.rerun()
+
         if st.button("🚪 Logout"):
             st.session_state.current_page = 'logout'
             st.rerun()

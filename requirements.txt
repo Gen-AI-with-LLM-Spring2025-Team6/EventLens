@@ -11,3 +11,4 @@ snowflake-sqlalchemy
 langchain-community 
 langchain-anthropic
 pydantic[email]
+streamlit-modal
