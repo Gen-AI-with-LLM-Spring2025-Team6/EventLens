@@ -13,3 +13,4 @@ langchain-anthropic
 pydantic[email]
 streamlit-modal
 openai
+langchain-openai
