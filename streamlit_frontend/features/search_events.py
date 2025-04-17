@@ -9,7 +9,7 @@ from utils.s3_retreival import convert_s3_to_https
 FAST_API_URL = os.getenv("FAST_API_URL")
 DEFAULT_IMAGE_URL = "https://as2.ftcdn.net/jpg/02/16/94/65/1000_F_216946587_rmug8FCNgpDCPQlstiCJ0CAXJ2sqPRU7.jpg"
 
-def load_and_resize_image(url, width=200, height=160):
+def load_and_resize_image(url, width=260, height=160):
     try:
         response = requests.get(url)
         if response.status_code == 200:
@@ -21,8 +21,16 @@ def load_and_resize_image(url, width=200, height=160):
     return None
 
 def search_events():
-    st.title("🔍 Search Events")
-    st.info("Search events using natural language queries like topics, locations, or dates.")
+    st.markdown(
+        """
+        <div style="text-align:center; padding: 20px 0 10px;">
+            <h1 style="font-size: 2.5em;">🔍 Explore Events in <span style="color:#4CAF50;">Boston</span></h1>
+            <p style="font-size: 1.1em; color: #ccc;">Type a natural language query to discover events happening around the city.<br>
+            Use keywords like <i>free music in the park</i> or <i>tech conferences this weekend</i>.</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     modal = Modal(key="details_modal", title="📅 Event Details", padding=20)
 
@@ -81,13 +89,46 @@ def search_events():
         with modal.container():
             selected = st.session_state.get("selected_event")
             if selected:
-                st.subheader(f"📅 {selected.get('EVENT_TITLE', 'Event')} - Details")
-                st.markdown(f"**Date:** {selected.get('START_DATE')} to {selected.get('END_DATE')}")
-                st.markdown(f"**Time:** {selected.get('START_TIME')} to {selected.get('END_TIME')}")
-                st.markdown(f"**Location:** {selected.get('FULL_ADDRESS')}")
-                st.markdown(f"**Admission:** {selected.get('ADMISSION')}")
-                st.markdown(f"**Categories:** {selected.get('CATEGORIES')}")
-                st.markdown(f"**Occurrences:** {selected.get('OCCURRENCES')}")
-                st.markdown(f"**Description:** {selected.get('DESCRIPTION')}")
+                st.markdown(f"<h3 style='margin-bottom: 10px;'>📅 {selected.get('EVENT_TITLE', 'Event')} - Details</h3>", unsafe_allow_html=True)
+
+                fields = [
+                    ("START_DATE", "Start Date"),
+                    ("END_DATE", "End Date"),
+                    ("START_TIME", "Start Time"),
+                    ("END_TIME", "End Time"),
+                    ("FULL_ADDRESS", "Location"),
+                    ("ADMISSION", "Admission"),
+                    ("OCCURRENCES", "Occurrences"),
+                ]
+                for key, label in fields:
+                    if selected.get(key):
+                        st.markdown(f"- **{label}:** {selected[key]}")
+
+                if selected.get("DESCRIPTION"):
+                    desc = selected["DESCRIPTION"]
+                    short_desc = " ".join(desc.split()[:60]) + "..."
+                    st.markdown(f"**📝 Description:** {short_desc}")
+
+                #if selected.get("CATEGORIES"):
+                    #st.markdown(f"**🏷️ Categories:** {selected['CATEGORIES']}")
+
+                # Event URL Button
                 if selected.get("EVENT_URL"):
-                    st.markdown(f"[🔗 Event Link]({selected['EVENT_URL']})", unsafe_allow_html=True)
+                    st.markdown(
+                        f"""
+                        <div style="margin-top: 15px;">
+                            <a href="{selected['EVENT_URL']}" target="_blank">
+                                <button style='
+                                    background-color:#4CAF50;
+                                    color:white;
+                                    padding:10px 20px;
+                                    border:none;
+                                    border-radius:8px;
+                                    cursor:pointer;
+                                    font-size:16px;
+                                '>🔗 Visit Event Page</button>
+                            </a>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
