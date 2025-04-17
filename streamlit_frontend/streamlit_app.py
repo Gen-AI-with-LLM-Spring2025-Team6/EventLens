@@ -20,15 +20,41 @@ if 'current_page' not in st.session_state:
 
 # Landing Page
 def landing_page():
-    st.title("📅 Welcome to EventLens")
-    st.markdown("""
-        EventLens is your smart assistant for discovering and managing events tailored just for you.
-        
-        ### 🔍 What can you do?
-        - Get personalized **event recommendations**
-        - Explore events using our **search tool**
-        - Chat with our **event assistant**
-    """)
+
+    st.markdown(
+        """
+        <div style='text-align: center; padding-top: 20px;'>
+            <h1 style='font-size: 3.2em;'>📅 Welcome to <span style="color:#4CAF50;">EventLens</span></h1>
+            <p style='font-size: 1.25em; margin-top: 10px;'>
+                Your smart assistant for discovering and managing events tailored just for you in <strong>Boston</strong>.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        """
+        <div style='text-align: center; margin-top: 10px;'>
+            <p style='font-size: 1.1em; color: #aaa;'>🎉 Over <strong>5,000+</strong> live events happening across neighborhoods in Boston — concerts, markets, workshops, and more.</p>
+            <p style='font-size: 1.05em; color: #ccc;'>EventLens helps you find the ones that truly matter to <em>you</em>.</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("---")
+
+    st.markdown("### 🔍 What can you do?")
+    st.markdown(
+        """
+        - 🧠 Get personalized **event recommendations** based on your interests
+        - 🗺️ Explore what's happening in Boston using our **search assistant**
+        - 💬 Chat with our smart **event discovery bot**
+        - 📅 Save events you like for later tracking
+        """
+    )
+
 
     col1, col2 = st.columns(2)
     with col1:
