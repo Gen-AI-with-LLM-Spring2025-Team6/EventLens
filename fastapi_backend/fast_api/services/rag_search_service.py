@@ -1,26 +1,11 @@
 import os
 import re
 import pandas as pd
-from openai import OpenAI
 import json
 from fastapi_backend.fast_api.config.db_connection import snowflake_connection, close_connection
 from fastapi_backend.fast_api.utils.snowflake_queries import vector_search_snowflake
+from fastapi_backend.fast_api.utils.open_ai_calls import generate_openai_response
 
-def generate_openai_response(system_prompt, user_prompt, model_name, api_key, max_tokens=500, temperature=0.3):
-    client = OpenAI(api_key=api_key)
-    try:
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"OpenAI Error: {e}"
 
 def analyze_user_query(user_query, model_name, api_key):
     system_prompt = (
