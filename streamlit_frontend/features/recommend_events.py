@@ -95,8 +95,8 @@ def recommend_events():
                     short_desc = " ".join(desc.split()[:50]) + "..."
                     st.markdown(f"📄 <strong>Description:</strong> {short_desc}", unsafe_allow_html=True)
 
-                if event.get("CATEGORIES"):
-                    st.markdown(f"🏷️ <strong>Categories:</strong> {event['CATEGORIES']}", unsafe_allow_html=True)
+                #if event.get("CATEGORIES"):
+                    #st.markdown(f"🏷️ <strong>Categories:</strong> {event['CATEGORIES']}", unsafe_allow_html=True)
 
                 event_url = event.get("EVENT_URL")
                 if event_url:
