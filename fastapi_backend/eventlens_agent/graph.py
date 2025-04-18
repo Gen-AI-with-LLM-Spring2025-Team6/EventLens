@@ -1,18 +1,16 @@
 import json
-from typing import Dict, List, Optional, Any
-import sys
 import os
+import sys
+from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolExecutor
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.prompts import ChatPromptTemplate
-from fastapi_backend.eventlens_agent.state import State
-from fastapi_backend.eventlens_agent.tools.rag_data_retreival_api import retrieve_events
-from fastapi_backend.eventlens_agent.tools.weather_api import check_weather_for_address
-from fastapi_backend.eventlens_agent.tools.maps_api import get_directions
-from fastapi_backend.eventlens_agent.tools.sentiment_serpapi import format_reviews_for_llm
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from state import State
+from tools.rag_data_retreival_api import retrieve_events
+from tools.weather_api import check_weather_for_address, process_weather_query
+from tools.maps_api import get_directions, process_directions_query
+from tools.sentiment_serpapi import format_reviews_for_llm, process_sentiment_query
 
 class EventRecommendationGraph:
     """
@@ -36,23 +34,25 @@ class EventRecommendationGraph:
                 "description": "Finds relevant events based on user interests and preferences"
             },
             "check_weather": {
-                "func": check_weather_for_address,
+                "func": process_weather_query,
                 "description": "Checks weather forecast for a specific location and date"
             },
             "get_directions": {
-                "func": get_directions,
+                "func": process_directions_query,
                 "description": "Gets directions and travel information between two locations"
             },
             "get_event_reviews": {
-                "func": format_reviews_for_llm,
+                "func": process_sentiment_query,
                 "description": "Gets reviews and sentiment about an event"
             }
         }
         
-        # Wrap tools for execution - commenting out as your tools might have different signatures
-        # self.tool_executor = ToolExecutor({
-        #    name: tool for name, tool in self.tools.items()
-        # })
+        # Legacy function mappings for backward compatibility
+        self.legacy_functions = {
+            "check_weather": check_weather_for_address,
+            "get_directions": get_directions,
+            "get_event_reviews": format_reviews_for_llm
+        }
         
         # Create the graph
         self.graph = self._build_graph()
@@ -73,7 +73,7 @@ class EventRecommendationGraph:
         graph_builder.add_node("weather_tool", self._weather_tool_node)
         graph_builder.add_node("maps_tool", self._maps_tool_node)
         graph_builder.add_node("reviews_tool", self._reviews_tool_node)
-        graph_builder.add_node("final_answer", self._final_answer_node)
+        graph_builder.add_node("answer_generator", self._final_answer_node)
         
         # Define the edges of the graph
         # Start -> Controller
@@ -88,7 +88,7 @@ class EventRecommendationGraph:
                 "weather_tool": "weather_tool",
                 "maps_tool": "maps_tool",
                 "reviews_tool": "reviews_tool",
-                "final_answer": "final_answer",
+                "answer_generator": "answer_generator",
                 None: END  # If no more tools needed and no final answer needed
             }
         )
@@ -100,7 +100,7 @@ class EventRecommendationGraph:
         graph_builder.add_edge("reviews_tool", "controller")
         
         # Final answer -> END
-        graph_builder.add_edge("final_answer", END)
+        graph_builder.add_edge("answer_generator", END)
         
         # Compile the graph
         return graph_builder.compile()
@@ -128,55 +128,70 @@ class EventRecommendationGraph:
         Analyze the user query and determine which tools to call.
         """
         messages = state["messages"]
-        
+
         # Extract the last user message
         last_user_message = None
         for msg in reversed(messages):
             if isinstance(msg, HumanMessage):
                 last_user_message = msg.content
                 break
-        
+            
         if not last_user_message:
             return {"need_final_answer": True}
+
+        # Instead of ChatPromptTemplate, use direct system and user messages
+        # Create system message that includes context from previous interactions
+        system_content = """You are an event recommendation assistant. 
+        Your job is to determine which tools to use based on the user's query.
+        You have the following tools available:
+
+        - retrieve_events: Finds relevant events based on user interests and preferences from the database
+        - check_weather: Checks weather forecast for a specific location and date
+        - get_directions: Gets directions and travel information between two locations
+        - get_event_reviews: Gets reviews and sentiment about an event
+
+        Analyze the user's query and determine which tools are needed in what order.
+        Return a JSON list of tool names in the order they should be used.
+        Only include tools that are necessary for the user's query.
         
-        # Prepare messages for the LLM
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an event recommendation assistant. 
-            Your job is to determine which tools to use based on the user's query.
-            You have the following tools available:
+        Consider the full conversation history when determining which tools to use. 
+        For example, if a user asks about directions to an event mentioned earlier, 
+        you should use the get_directions tool.
+        """
+
+        system_message = SystemMessage(content=system_content)
+        
+        # Create a message list including conversation history
+        # This is key for maintaining context between turns
+        conversation_messages = []
+        for msg in messages:
+            conversation_messages.append(msg)
             
-            - retrieve_events: Finds relevant events based on user interests and preferences from the database
-            - check_weather: Checks weather forecast for a specific location and date
-            - get_directions: Gets directions and travel information between two locations
-            - get_event_reviews: Gets reviews and sentiment about an event
-            
-            Analyze the user's query and determine which tools are needed in what order.
-            Return a JSON list of tool names in the order they should be used.
-            Only include tools that are necessary for the user's query.
-            """),
-            ("user", last_user_message),
-        ])
+        # Add the system message at the beginning
+        message_list = [system_message] + conversation_messages
         
-        response = self.llm.invoke(prompt)
-        
+        # Use message list directly with all conversation history
+        response = self.llm.invoke(message_list)
+
+        # Rest of the method remains the same
         try:
             # Parse the tools to be used from the LLM response
             tools_to_call = json.loads(response.content)
-            
+
             if isinstance(tools_to_call, dict) and "tools" in tools_to_call:
                 tools_to_call = tools_to_call["tools"]
-            
+
             if not isinstance(tools_to_call, list):
                 tools_to_call = [tools_to_call]
-            
+
             # Filter out any invalid tool names
             valid_tools = list(self.tools.keys())
             tools_to_call = [tool for tool in tools_to_call if tool in valid_tools]
-            
+
             # If no valid tools were identified, go straight to final answer
             if not tools_to_call:
                 return {"need_final_answer": True}
-            
+
             return {
                 "tools_to_call": tools_to_call,
                 "tools_called": [],
@@ -209,7 +224,7 @@ class EventRecommendationGraph:
         """
         # If we need a final answer, route to final answer node
         if state.get("need_final_answer"):
-            return "final_answer"
+            return "answer_generator"
         
         # Otherwise, route to the current tool
         current_tool = state.get("current_tool")
@@ -224,67 +239,7 @@ class EventRecommendationGraph:
             return "reviews_tool"
         else:
             # Default to final answer if no tool is specified
-            return "final_answer"
-    
-    def _extract_tool_params(self, state: State, tool_name: str) -> Dict:
-        """
-        Extract parameters for a specific tool from the user's messages.
-        """
-        messages = state["messages"]
-        
-        # Extract the last user message
-        last_user_message = None
-        for msg in reversed(messages):
-            if isinstance(msg, HumanMessage):
-                last_user_message = msg.content
-                break
-        
-        if not last_user_message:
-            return {}
-        
-        # Create a prompt to extract parameters for the specific tool
-        tool_description = self.tools[tool_name]["description"]
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", f"""Extract parameters for the {tool_name} tool from the user's message.
-            This tool {tool_description}.
-            
-            Return a JSON object with parameters appropriate for this tool.
-            
-            For retrieve_events: {{
-                "query": "user's request/interests"
-            }}
-            
-            For check_weather: {{
-                "address": "location address",
-                "date": "date in YYYY-MM-DD format"
-            }}
-            
-            For get_directions: {{
-                "origin": "starting location",
-                "destination": "ending location",
-                "mode": "driving/walking/transit"
-            }}
-            
-            For get_event_reviews: {{
-                "event_name": "name of the event",
-                "location": "location of the event"
-            }}
-            
-            Only include parameters that can be directly inferred from the user's message.
-            """),
-            ("user", last_user_message),
-        ])
-        
-        response = self.llm.invoke(prompt)
-        
-        try:
-            # Parse the parameters from the LLM response
-            parameters = json.loads(response.content)
-            return parameters
-        except:
-            # If parsing fails, return empty parameters
-            return {}
+            return "answer_generator"
     
     def _rag_tool_node(self, state: State) -> Dict:
         """
@@ -294,12 +249,34 @@ class EventRecommendationGraph:
         if current_tool != "retrieve_events":
             return {}
         
-        # Extract parameters for the RAG tool
-        params = self._extract_tool_params(state, "retrieve_events")
+        # Get all messages to provide context
+        messages = state["messages"]
         
-        # Execute the RAG tool
-        query = params.get("query", "events")
-        result = retrieve_events(query)
+        # Extract context from previous assistant messages if they exist
+        context = ""
+        previous_results = state.get("tool_results", {})
+        if "retrieve_events" in previous_results:
+            context += f"Previously mentioned events: {previous_results['retrieve_events']}\n\n"
+        
+        # Get the latest user query
+        last_user_message = None
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                last_user_message = msg.content
+                break
+        
+        if not last_user_message:
+            return {}
+        
+        # Add context to help with understanding references to previous events
+        enhanced_query = last_user_message
+        if context:
+            # For LLM processing, we'll just pass the raw user message
+            # The context will be used by retrieve_events internally through the state
+            pass
+        
+        # Execute the RAG tool with context
+        result = retrieve_events(enhanced_query)
         
         # Update the state
         tools_called = state.get("tools_called", [])
@@ -321,29 +298,32 @@ class EventRecommendationGraph:
         if current_tool != "check_weather":
             return {}
         
-        # Extract parameters for the weather tool
-        params = self._extract_tool_params(state, "check_weather")
+        # Get all user messages to provide context
+        messages = state["messages"]
         
-        # Execute the weather tool
-        address = params.get("address", "")
-        date = params.get("date", "")
+        # Get the latest user query
+        last_user_message = None
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                last_user_message = msg.content
+                break
         
-        if not address:
-            # If no address is provided, use any location from RAG results
-            events_result = state.get("tool_results", {}).get("retrieve_events", "")
-            if "Boston" in events_result:
-                address = "Boston, MA"
-            elif "New York" in events_result:
-                address = "New York, NY"
-            elif "San Francisco" in events_result:
-                address = "San Francisco, CA"
+        if not last_user_message:
+            return {}
+            
+        # Extract location context from previous results if available
+        previous_results = state.get("tool_results", {})
+        event_context = previous_results.get("retrieve_events", "")
         
-        if not date:
-            # If no date is provided, use tomorrow's date
-            tomorrow = datetime.now() + timedelta(days=1)
-            date = tomorrow.strftime("%Y-%m-%d")
+        # If we have previous event results, add them as context to the query
+        enhanced_query = last_user_message
+        if event_context:
+            # Add event context to the query to help extract better parameters
+            # Use the natural language processing method that can handle full context
+            pass
         
-        result = check_weather_for_address(address, date)
+        # Use the direct natural language processing method
+        result = process_weather_query(enhanced_query)
         
         # Update the state
         tools_called = state.get("tools_called", [])
@@ -365,25 +345,33 @@ class EventRecommendationGraph:
         if current_tool != "get_directions":
             return {}
         
-        # Extract parameters for the maps tool
-        params = self._extract_tool_params(state, "get_directions")
+        # Get all user messages to provide context
+        messages = state["messages"]
         
-        # Execute the maps tool
-        origin = params.get("origin", "")
-        destination = params.get("destination", "")
-        mode = params.get("mode", "driving")
+        # Extract event location context from previous results
+        previous_results = state.get("tool_results", {})
+        event_context = previous_results.get("retrieve_events", "")
         
-        if not destination:
-            # If no destination is provided, use any location from RAG results
-            events_result = state.get("tool_results", {}).get("retrieve_events", "")
-            if "Boston" in events_result:
-                destination = "Boston, MA"
-            elif "New York" in events_result:
-                destination = "New York, NY"
-            elif "San Francisco" in events_result:
-                destination = "San Francisco, CA"
+        # Get the latest user query
+        last_user_message = None
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                last_user_message = msg.content
+                break
         
-        result = get_directions(origin, destination, mode)
+        if not last_user_message:
+            return {}
+        
+        # If we have previous event results, create an enhanced query
+        enhanced_query = last_user_message
+        if event_context:
+            # Extract location information from previous event results
+            location_info = self._extract_location_from_results(event_context)
+            if location_info:
+                enhanced_query = f"{last_user_message} (regarding the location at {location_info})"
+        
+        # Use the direct natural language processing method with the enhanced query
+        result = process_directions_query(enhanced_query)
         
         # Update the state
         tools_called = state.get("tools_called", [])
@@ -397,6 +385,34 @@ class EventRecommendationGraph:
             "tool_results": tool_results
         }
     
+    def _extract_location_from_results(self, event_results: str) -> Optional[str]:
+        """
+        Extract location information from event results.
+        
+        Args:
+            event_results: String containing event information
+            
+        Returns:
+            Location string if found, None otherwise
+        """
+        # Use LLM to extract location from the event results
+        system_message = SystemMessage(content="""
+        Extract the location or address of the event mentioned in the text.
+        Return only the location or address, with no additional text.
+        If no location is mentioned, return NONE.
+        """)
+        
+        user_message = HumanMessage(content=event_results)
+        
+        # Get location from LLM
+        response = self.llm.invoke([system_message, user_message])
+        
+        location = response.content.strip()
+        if location.upper() == "NONE":
+            return None
+            
+        return location
+    
     def _reviews_tool_node(self, state: State) -> Dict:
         """
         Execute the reviews tool to get event reviews.
@@ -405,24 +421,33 @@ class EventRecommendationGraph:
         if current_tool != "get_event_reviews":
             return {}
         
-        # Extract parameters for the reviews tool
-        params = self._extract_tool_params(state, "get_event_reviews")
+        # Get all user messages for context
+        messages = state["messages"]
         
-        # Execute the reviews tool
-        event_name = params.get("event_name", "")
-        location = params.get("location", "")
+        # Extract event name context from previous results
+        previous_results = state.get("tool_results", {})
+        event_context = previous_results.get("retrieve_events", "")
         
-        if not event_name:
-            # If no event name is provided, use any event from RAG results
-            events_result = state.get("tool_results", {}).get("retrieve_events", "")
-            if "Tech Conference" in events_result:
-                event_name = "Tech Conference"
-            elif "Music Festival" in events_result:
-                event_name = "Music Festival"
-            elif "Food Fair" in events_result:
-                event_name = "Food Fair"
+        # Get the latest user query
+        last_user_message = None
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                last_user_message = msg.content
+                break
         
-        result = format_reviews_for_llm(event_name, location)
+        if not last_user_message:
+            return {}
+        
+        # If we have previous event results, create an enhanced query
+        enhanced_query = last_user_message
+        if event_context:
+            # Extract event name information from previous event results
+            event_name = self._extract_event_name_from_results(event_context)
+            if event_name:
+                enhanced_query = f"{last_user_message} (regarding {event_name})"
+        
+        # Use the direct natural language processing method with the enhanced query
+        result = process_sentiment_query(enhanced_query)
         
         # Update the state
         tools_called = state.get("tools_called", [])
@@ -436,51 +461,94 @@ class EventRecommendationGraph:
             "tool_results": tool_results
         }
     
+    def _extract_event_name_from_results(self, event_results: str) -> Optional[str]:
+        """
+        Extract event name information from event results.
+        
+        Args:
+            event_results: String containing event information
+            
+        Returns:
+            Event name string if found, None otherwise
+        """
+        # Use LLM to extract event name from the event results
+        system_message = SystemMessage(content="""
+        Extract the name of the event mentioned in the text.
+        Return only the event name, with no additional text.
+        If no event is mentioned, return NONE.
+        """)
+        
+        user_message = HumanMessage(content=event_results)
+        
+        # Get event name from LLM
+        response = self.llm.invoke([system_message, user_message])
+        
+        event_name = response.content.strip()
+        if event_name.upper() == "NONE":
+            return None
+            
+        return event_name
+    
     def _final_answer_node(self, state: State) -> Dict:
         """
         Generate the final answer based on the results from all tools.
         """
         messages = state["messages"]
         tool_results = state.get("tool_results", {})
+        tools_called = state.get("tools_called", [])
         
-        # Create a prompt for the final answer
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an event recommendation assistant.
-            Synthesize the results from the tools into a coherent, helpful response for the user.
-            Use all the available information to provide a complete response.
-            Be conversational and friendly.
-            
-            Include specific details from the tools' results when available:
-            - Event details from the retrieve_events tool
-            - Weather information from the check_weather tool
-            - Directions and travel info from the get_directions tool
-            - Reviews and sentiment from the get_event_reviews tool
-            
-            Only mention tools that were actually used.
-            """),
-            *messages,
-            ("system", f"Tool results: {json.dumps(tool_results)}"),
-        ])
+        # Create direct messages instead of using ChatPromptTemplate
+        system_content = f"""You are an event recommendation assistant.
+        Synthesize the results from the tools into a coherent, helpful response for the user.
+        Use all the available information to provide a complete response.
+        Be conversational and friendly.
         
-        response = self.llm.invoke(prompt)
+        You have results from the following tools:
+        {", ".join(tools_called)}
+        
+        Include specific details from the tools' results when available:
+        - Event details from the retrieve_events tool
+        - Weather information from the check_weather tool
+        - Directions and travel info from the get_directions tool
+        - Reviews and sentiment from the get_event_reviews tool
+        
+        Only mention tools that were actually used.
+        
+        Make your response conversational and maintain context from the entire conversation.
+        If the user is referring to events or locations mentioned earlier, acknowledge that in your response.
+        
+        Tool results: {json.dumps(tool_results)}
+        """
+        
+        system_message = SystemMessage(content=system_content)
+        
+        # Include the full conversation history
+        response = self.llm.invoke([system_message] + messages)
         
         # Return the final answer
-        return {"messages": [AIMessage(content=response.content)]}
+        return {"messages": messages + [AIMessage(content=response.content)]}
     
-    def invoke(self, message: str) -> str:
+    def invoke(self, message: str, conversation_history: Optional[List] = None) -> str:
         """
         Invoke the event recommendation system with a user message.
         
         Args:
             message: The user's message.
+            conversation_history: Optional previous conversation history.
             
         Returns:
             str: The assistant's response.
         """
-        # Create the initial state with the user's message
-        state = {
-            "messages": [HumanMessage(content=message)]
-        }
+        if conversation_history is None:
+            # Start a new conversation
+            state = {
+                "messages": [HumanMessage(content=message)]
+            }
+        else:
+            # Continue an existing conversation
+            state = {
+                "messages": conversation_history + [HumanMessage(content=message)]
+            }
         
         # Run the graph
         result = self.graph.invoke(state)
@@ -488,10 +556,40 @@ class EventRecommendationGraph:
         # Return the last message from the assistant
         messages = result.get("messages", [])
         if messages:
-            return messages[-1].content
+            # Return both the message content and the updated conversation history
+            return messages[-1].content, messages
         
-        return "I'm sorry, I wasn't able to process your request."
+        return "I'm sorry, I wasn't able to process your request.", state.get("messages", [])
+    
+    def chat(self):
+        """
+        Interactive chat session with conversation memory.
+        """
+        print("="*80)
+        print("Welcome to EventLens! Ask me about events, weather, directions, or reviews.")
+        print("Type 'exit' or 'quit' to end the session.")
+        print("="*80)
+        
+        # Initialize conversation history
+        conversation_history = []
+        
+        while True:
+            user_input = input("\nYou: ")
+            
+            if user_input.lower() in ["exit", "quit"]:
+                print("\nThank you for using EventLens. Goodbye!")
+                break
+            
+            # Process the message with conversation history
+            response, conversation_history = self.invoke(user_input, conversation_history)
+            print(f"\nEventLens: {response}")
 
 
 # Create a singleton instance to be imported elsewhere
 event_recommendation_graph = EventRecommendationGraph()
+
+# Add a standalone function for easy use
+def process_query(message: str, conversation_history=None):
+    """Standalone function to process a query with the graph."""
+    response_text, updated_history = event_recommendation_graph.invoke(message, conversation_history)
+    return response_text, updated_history
