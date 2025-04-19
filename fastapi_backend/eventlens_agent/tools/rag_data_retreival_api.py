@@ -235,7 +235,7 @@ def fetch_event_context(search_queries: List[str], table_name: str = "EVENTLENS_
             # Add non-duplicate results to the list
             for event_id, text, sim in partial_results:
                 if event_id not in seen_ids:
-                    results.append((event_id, text, sim))
+                    results.append(("Titile ID : " + str(event_id), text, sim))
                     seen_ids.add(event_id)
         return results
     
@@ -292,9 +292,14 @@ Return {limit} best matching EVENT_IDs as a JSON array of integers:""")
     # Get the response from the LLM
     response = llm.invoke([system_message, user_message])
     
+    
     try:
         # Parse the JSON response
-        event_ids = json.loads(response.content)
+        #print(response)
+        content = response.content
+        cleaned = content.strip("```json\n").strip("```").strip()
+        event_ids = json.loads(cleaned)
+        #print(event_ids)
         
         # Ensure all IDs are integers
         event_ids = [int(eid) for eid in event_ids]
@@ -416,6 +421,8 @@ def retrieve_events(user_query: str) -> str:
     try:
         # Step 1: Analyze the user query to generate search queries
         search_queries = analyze_user_query(user_query)
+        #
+        #print(search_queries)
         
         # Step 2: Fetch event context using vector search
         event_results = fetch_event_context(
@@ -428,7 +435,7 @@ def retrieve_events(user_query: str) -> str:
         
         if not event_results:
             return "I couldn't find any events matching your criteria. Would you like to try a different search?"
-        
+        #print(event_results)
         # Step 3: Refine the event IDs based on the context
         selected_ids = refine_event_ids_from_context(
             event_results=event_results,
@@ -436,10 +443,10 @@ def retrieve_events(user_query: str) -> str:
             original_question=user_query,
             limit=10
         )
-        
+        #print(selected_ids)
         # Step 4: Fetch the complete details for the selected events
         event_details = fetch_event_details_from_ids(selected_ids)
-        
+
         # Step 5: Format the event recommendations
         return format_event_recommendations(event_details, user_query)
     
@@ -447,15 +454,15 @@ def retrieve_events(user_query: str) -> str:
         return f"I'm sorry, I encountered an error while searching for events: {str(e)}. Please try again or modify your query."
 
 
-## For testing the API directly
+# For testing the API directly
 #if __name__ == "__main__":
-#    # Test with different queries
-#    test_queries = [
-#        "What's happening in Boston this weekend?"
-#    ]
-#    
-#    for query in test_queries:
-#        print(f"\nTEST QUERY: {query}")
-#        print("-" * 50)
-#        print(retrieve_events(query))
-#        print("=" * 80)
+#   # Test with different queries
+#   test_queries = [
+#       "Give me some events related to music in boston this weekend"
+#   ]
+#   
+#   for query in test_queries:
+#       print(f"\nTEST QUERY: {query}")
+#       print("-" * 50)
+#       print(retrieve_events(query))
+#       print("=" * 80)

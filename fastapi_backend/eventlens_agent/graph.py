@@ -1,23 +1,23 @@
 import json
 import os
 import sys
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
 from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from state import State
-from tools.rag_data_retreival_api import retrieve_events
-from tools.weather_api import check_weather_for_address, process_weather_query
-from tools.maps_api import get_directions, process_directions_query
-from tools.sentiment_serpapi import format_reviews_for_llm, process_sentiment_query
+from fastapi_backend.eventlens_agent.state import State
+from fastapi_backend.eventlens_agent.tools.rag_data_retreival_api import retrieve_events
+from fastapi_backend.eventlens_agent.tools.weather_api import check_weather_for_address, process_weather_query
+from fastapi_backend.eventlens_agent.tools.maps_api import get_directions, process_directions_query
+from fastapi_backend.eventlens_agent.tools.sentiment_serpapi import format_reviews_for_llm, process_sentiment_query
 
 class EventRecommendationGraph:
     """
     A complete event recommendation system using LangGraph.
     """
     
-    def __init__(self, llm_model: str = "gpt-4"):
+    def __init__(self, llm_model: str = "gpt-4o"):
         """
         Initialize the event recommendation system.
         
@@ -56,6 +56,87 @@ class EventRecommendationGraph:
         
         # Create the graph
         self.graph = self._build_graph()
+    
+    def _is_relevant_query(self, query: str, conversation_history: Optional[List] = None) -> bool:
+        """
+        Determine if a query is related to events in Boston, considering conversation history.
+        
+        Args:
+            query: The user's query
+            conversation_history: Optional conversation history to provide context
+                
+        Returns:
+            bool: True if the query is relevant, False otherwise
+        """
+        # Use the LLM to classify whether the query is related to events
+        system_content = """
+        You are a query classifier for EventLens, an event recommendation system focused on Boston events.
+        Determine if the query is related ONLY to:
+        1. Events in Boston (concerts, sports, festivals, etc.)
+        2. Weather specifically for attending events
+        3. Directions to event venues
+        4. Reviews of Boston events
+        5. Follow-up questions about events mentioned earlier
+        
+        Consider the FULL CONVERSATION HISTORY when determining relevance.
+        A query that seems unrelated when viewed alone might be a follow-up
+        to previous event-related discussion.
+        
+        Return ONLY "relevant" or "not_relevant" with no additional text.
+        
+        Examples of RELEVANT queries:
+        - "What events are happening in Boston this weekend?"
+        - "Are there any jazz concerts in Boston?"
+        - "How's the weather for the Red Sox game tomorrow?"
+        - "How do I get to Symphony Hall?"
+        - "How is the weather during the event?"
+        - "What do people think about the Boston Marathon?"
+        - "What are you? / What kind of events do you cover?"
+        - "Based on the weather which mode of transit would you suggest?"
+        - "How long will it take to get there?" (when previously discussing an event)
+        - "Is parking available?" (when previously discussing an event venue)
+        - "What time does it start?" (when referring to an event mentioned earlier)
+        
+        Examples of NOT RELEVANT queries:
+        - "What is the capital of France?"
+        - "Who is the President of the United States?"
+        - "Explain quantum computing"
+        - "What are the latest stock prices?"
+        - "Tell me about the history of Rome"
+        - "How's the weather in Paris?" (not event-related)
+        - "What's the distance from New York to Los Angeles?" (not Boston-related)
+        """
+        
+        system_message = SystemMessage(content=system_content)
+        
+        # Create user message, potentially including conversation history for context
+        if conversation_history and len(conversation_history) > 0:
+            # Format conversation history for context
+            history_text = ""
+            for i, msg in enumerate(conversation_history):
+                if isinstance(msg, HumanMessage):
+                    history_text += f"Human: {msg.content}\n"
+                elif isinstance(msg, AIMessage):
+                    history_text += f"Assistant: {msg.content}\n"
+            
+            # Create a user message with context
+            user_content = f"""Conversation history:
+{history_text}
+
+Current query: {query}
+
+Is this query relevant to Boston events, considering the conversation history?"""
+            user_message = HumanMessage(content=user_content)
+        else:
+            # No conversation history, just check the current query
+            user_message = HumanMessage(content=query)
+        
+        try:
+            response = self.llm.invoke([system_message, user_message])
+            return response.content.strip().lower() == "relevant"
+        except:
+            # If there's an error, default to rejecting the query
+            return False
     
     def _build_graph(self) -> StateGraph:
         """
@@ -139,9 +220,8 @@ class EventRecommendationGraph:
         if not last_user_message:
             return {"need_final_answer": True}
 
-        # Instead of ChatPromptTemplate, use direct system and user messages
-        # Create system message that includes context from previous interactions
-        system_content = """You are an event recommendation assistant. 
+        # Improved system content with stronger guidance for event queries
+        system_content = """You are EventLens, an event recommendation assistant for Boston. 
         Your job is to determine which tools to use based on the user's query.
         You have the following tools available:
 
@@ -149,6 +229,21 @@ class EventRecommendationGraph:
         - check_weather: Checks weather forecast for a specific location and date
         - get_directions: Gets directions and travel information between two locations
         - get_event_reviews: Gets reviews and sentiment about an event
+
+        IMPORTANT RULES:
+        1. If the user asks about ANY kind of events (sports, music, family, etc.) or activities in Boston, 
+           ALWAYS include "retrieve_events" in your tools selection.
+        
+        2. For queries like "suggest events", "what's happening", "find activities", "show me events", 
+           or similar requests for event recommendations, ALWAYS use the "retrieve_events" tool FIRST.
+           
+        3. If the user asks about weather for an event, include both "retrieve_events" and "check_weather".
+        
+        4. If the user asks about directions or how to get to an event, include both "retrieve_events" 
+           and "get_directions".
+           
+        5. If the user asks about reviews or opinions about an event, include both "retrieve_events" 
+           and "get_event_reviews".
 
         Analyze the user's query and determine which tools are needed in what order.
         Return a JSON list of tool names in the order they should be used.
@@ -188,6 +283,13 @@ class EventRecommendationGraph:
             valid_tools = list(self.tools.keys())
             tools_to_call = [tool for tool in tools_to_call if tool in valid_tools]
 
+            # Force inclusion of retrieve_events for event-related queries
+            event_keywords = ["event", "happening", "activity", "show me", "suggest", "sports", 
+                            "concert", "game", "festival", "show", "performance"]
+            if any(term in last_user_message.lower() for term in event_keywords):
+                if "retrieve_events" not in tools_to_call:
+                    tools_to_call.insert(0, "retrieve_events")  # Add at the beginning
+
             # If no valid tools were identified, go straight to final answer
             if not tools_to_call:
                 return {"need_final_answer": True}
@@ -205,18 +307,21 @@ class EventRecommendationGraph:
     def _check_if_more_tools_needed(self, state: State) -> Dict:
         """
         After a tool has been called, check if we need to call more tools.
+        This method ensures all tools in tools_to_call are called before moving to final answer.
         """
         tools_to_call = state.get("tools_to_call", [])
         tools_called = state.get("tools_called", [])
         
-        # Get the next tool to call
+        # Get any remaining tools that need to be called
         next_tools = [t for t in tools_to_call if t not in tools_called]
         
         if not next_tools:
-            # No more tools to call, generate final answer
+            # All tools have been called, now we can generate the final answer
             return {"need_final_answer": True}
-        
-        return {"current_tool": next_tools[0]}
+        else:
+            # There are still tools that need to be called
+            # Set the current tool to the next one in the list
+            return {"current_tool": next_tools[0]}
     
     def _route_to_next_tool(self, state: State) -> str:
         """
@@ -276,19 +381,34 @@ class EventRecommendationGraph:
             pass
         
         # Execute the RAG tool with context
-        result = retrieve_events(enhanced_query)
-        
-        # Update the state
-        tools_called = state.get("tools_called", [])
-        tools_called.append("retrieve_events")
-        
-        tool_results = state.get("tool_results", {})
-        tool_results["retrieve_events"] = result
-        
-        return {
-            "tools_called": tools_called,
-            "tool_results": tool_results
-        }
+        try:
+            result = retrieve_events(enhanced_query)
+            
+            # Update the state with whatever the RAG returned
+            tools_called = state.get("tools_called", [])
+            tools_called.append("retrieve_events")
+            
+            tool_results = state.get("tool_results", {})
+            tool_results["retrieve_events"] = result
+            
+            return {
+                "tools_called": tools_called,
+                "tool_results": tool_results
+            }
+        except Exception as e:
+            # If there's an exception, just return the error message
+            error_message = f"Error retrieving event information: {str(e)}. Please try again or modify your query."
+            
+            tools_called = state.get("tools_called", [])
+            tools_called.append("retrieve_events")
+            
+            tool_results = state.get("tool_results", {})
+            tool_results["retrieve_events"] = error_message
+            
+            return {
+                "tools_called": tools_called,
+                "tool_results": tool_results
+            }
     
     def _weather_tool_node(self, state: State) -> Dict:
         """
@@ -322,7 +442,7 @@ class EventRecommendationGraph:
             # Use the natural language processing method that can handle full context
             pass
         
-        # Use the direct natural language processing method
+        # Use the direct natural language processing method - wait for complete results
         result = process_weather_query(enhanced_query)
         
         # Update the state
@@ -370,7 +490,7 @@ class EventRecommendationGraph:
             if location_info:
                 enhanced_query = f"{last_user_message} (regarding the location at {location_info})"
         
-        # Use the direct natural language processing method with the enhanced query
+        # Use the direct natural language processing method - wait for complete results
         result = process_directions_query(enhanced_query)
         
         # Update the state
@@ -446,7 +566,7 @@ class EventRecommendationGraph:
             if event_name:
                 enhanced_query = f"{last_user_message} (regarding {event_name})"
         
-        # Use the direct natural language processing method with the enhanced query
+        # Use the direct natural language processing method - wait for complete results
         result = process_sentiment_query(enhanced_query)
         
         # Update the state
@@ -498,10 +618,23 @@ class EventRecommendationGraph:
         tools_called = state.get("tools_called", [])
         
         # Create direct messages instead of using ChatPromptTemplate
-        system_content = f"""You are an event recommendation assistant.
+        system_content = f"""You are EventLens, an AI assistant specifically designed to help with events in Boston.
+        ALWAYS identify yourself as EventLens if asked about your identity or name.
+        
+        IMPORTANT: You are EventLens, an event assistant created specifically for Boston events and activities.
+        If asked who you are, your name, or about your creator, clearly state that you are EventLens, 
+        an AI event recommendation assistant focused on Boston events.
+        
         Synthesize the results from the tools into a coherent, helpful response for the user.
         Use all the available information to provide a complete response.
         Be conversational and friendly.
+        
+        IMPORTANT: NEVER apologize for delays or mention that you were processing or retrieving information.
+        Never use phrases like "Let me check", "I'm gathering", "Please wait", or "I apologize for the delay".
+        
+        CRUCIAL: If the retrieve_events tool returned an error or no results, clearly state that you 
+        couldn't retrieve current event information and suggest that the user try again later or 
+        check Boston event websites directly.
         
         You have results from the following tools:
         {", ".join(tools_called)}
@@ -528,7 +661,7 @@ class EventRecommendationGraph:
         # Return the final answer
         return {"messages": messages + [AIMessage(content=response.content)]}
     
-    def invoke(self, message: str, conversation_history: Optional[List] = None) -> str:
+    def invoke(self, message: str, conversation_history: Optional[List] = None) -> Tuple[str, List]:
         """
         Invoke the event recommendation system with a user message.
         
@@ -537,8 +670,30 @@ class EventRecommendationGraph:
             conversation_history: Optional previous conversation history.
             
         Returns:
-            str: The assistant's response.
+            Tuple[str, List]: The assistant's response and updated conversation history.
         """
+        # Check if the query is related to events in Boston, considering conversation history
+        if not self._is_relevant_query(message, conversation_history):
+            off_topic_response = """I'm EventLens, your Boston events assistant. I'm designed to help you find events, 
+            get weather information for events, directions to venues, and reviews of events in Boston.
+            
+            I can't help with general knowledge questions or topics unrelated to Boston events.
+            
+            Could you please ask me about events, activities, or venues in Boston instead?"""
+            
+            # Create message objects
+            human_msg = HumanMessage(content=message)
+            ai_msg = AIMessage(content=off_topic_response)
+            
+            # Update conversation history
+            if conversation_history is None:
+                new_history = [human_msg, ai_msg]
+            else:
+                new_history = conversation_history + [human_msg, ai_msg]
+                
+            return off_topic_response, new_history
+        
+        # For relevant queries, proceed with normal processing
         if conversation_history is None:
             # Start a new conversation
             state = {
@@ -550,7 +705,7 @@ class EventRecommendationGraph:
                 "messages": conversation_history + [HumanMessage(content=message)]
             }
         
-        # Run the graph
+        # Run the graph - wait for complete processing before returning
         result = self.graph.invoke(state)
         
         # Return the last message from the assistant
@@ -580,8 +735,11 @@ class EventRecommendationGraph:
                 print("\nThank you for using EventLens. Goodbye!")
                 break
             
-            # Process the message with conversation history
+            # Process the message with conversation history - NO INTERMEDIATE RESPONSES
+            # Don't show any response until processing is complete
             response, conversation_history = self.invoke(user_input, conversation_history)
+            
+            # Only print the final complete response
             print(f"\nEventLens: {response}")
 
 
