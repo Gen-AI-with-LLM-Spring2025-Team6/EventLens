@@ -14,7 +14,7 @@ from data_load.parameters.parameter_config import (
 
 # Website specific settings - defined in the script
 WEBSITE_NAME = "instagram_events"
-STAGING_TABLE = "INSTAGRAM_EVENTS_DETAILS"
+STAGING_TABLE = "BOSTON_INSTAGRAM_EVENTS_DETAILS"
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -66,6 +66,10 @@ def load_to_staging(**context):
         
         # Full table name
         full_table_name = f"{SNOWFLAKE_SCHEMA}.{STAGING_TABLE}"
+
+        # Truncate the table before inserting
+        cursor.execute(f"TRUNCATE TABLE {full_table_name}")
+        logger.info(f"Truncated table {full_table_name}")
         
         # Prepare insert query for Instagram specific fields
         insert_query = f"""

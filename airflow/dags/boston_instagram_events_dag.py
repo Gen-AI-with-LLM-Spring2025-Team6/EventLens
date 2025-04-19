@@ -5,11 +5,15 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
-# Import the task functions
+# Import task functions
 from data_load.boston_instagram_events.scrape_events import scrape_instagram_events, WEBSITE_NAME
 from data_load.boston_instagram_events.process_media import process_media
 from data_load.boston_instagram_events.load_to_staging import load_to_staging
 from data_load.boston_instagram_events.load_to_edw import load_to_edw
+from data_load.connectors.s3_connection import create_s3_logging_connection
+
+# Metrics
+from data_load.helpers.metrics import start_task_metrics, end_task_metrics
 
 # Default arguments
 default_args = {
@@ -27,21 +31,31 @@ dag = DAG(
     f'{WEBSITE_NAME}_pipeline',
     default_args=default_args,
     description=f'Pipeline for scraping {WEBSITE_NAME}',
-    schedule_interval=None,  # No automatic scheduling, only manual triggers
+    schedule_interval=None,
     catchup=False,
 )
+
+create_s3_logging_connection()
 
 # Task 1: Scrape events from Instagram
 scrape_task = PythonOperator(
     task_id=f'scrape_{WEBSITE_NAME}',
     python_callable=scrape_instagram_events,
+    provide_context=True,
+    on_execute_callback=start_task_metrics,
+    on_success_callback=end_task_metrics,
+    on_failure_callback=end_task_metrics,
     dag=dag,
 )
 
-# Task 2: Process media (images and videos) and upload to S3
+# Task 2: Process media and upload to S3
 process_media_task = PythonOperator(
     task_id='process_media',
     python_callable=process_media,
+    provide_context=True,
+    on_execute_callback=start_task_metrics,
+    on_success_callback=end_task_metrics,
+    on_failure_callback=end_task_metrics,
     dag=dag,
 )
 
@@ -49,15 +63,23 @@ process_media_task = PythonOperator(
 load_staging_task = PythonOperator(
     task_id='load_to_staging',
     python_callable=load_to_staging,
+    provide_context=True,
+    on_execute_callback=start_task_metrics,
+    on_success_callback=end_task_metrics,
+    on_failure_callback=end_task_metrics,
     dag=dag,
 )
 
-# Task 4: Process and load to Snowflake EDW
+# Task 4: Load to Snowflake EDW
 load_edw_task = PythonOperator(
     task_id='load_to_edw',
     python_callable=load_to_edw,
+    provide_context=True,
+    on_execute_callback=start_task_metrics,
+    on_success_callback=end_task_metrics,
+    on_failure_callback=end_task_metrics,
     dag=dag,
 )
 
-# Define task dependencies
+# Set task dependencies
 scrape_task >> process_media_task >> load_staging_task >> load_edw_task
