@@ -93,6 +93,8 @@ class EventRecommendationGraph:
         - "What do people think about the Boston Marathon?"
         - "What are you? / What kind of events do you cover?"
         - "Based on the weather which mode of transit would you suggest?"
+        - "How is the weather during the event?"
+        - "Can you provide me reviews about this event ?"
         - "How long will it take to get there?" (when previously discussing an event)
         - "Is parking available?" (when previously discussing an event venue)
         - "What time does it start?" (when referring to an event mentioned earlier)
@@ -103,8 +105,6 @@ class EventRecommendationGraph:
         - "Explain quantum computing"
         - "What are the latest stock prices?"
         - "Tell me about the history of Rome"
-        - "How's the weather in Paris?" (not event-related)
-        - "What's the distance from New York to Los Angeles?" (not Boston-related)
         """
         
         system_message = SystemMessage(content=system_content)
@@ -220,6 +220,8 @@ Is this query relevant to Boston events, considering the conversation history?""
         if not last_user_message:
             return {"need_final_answer": True}
 
+        #print(f"\n[DEBUG] Processing query: {last_user_message}")
+        
         # Improved system content with stronger guidance for event queries
         system_content = """You are EventLens, an event recommendation assistant for Boston. 
         Your job is to determine which tools to use based on the user's query.
@@ -229,6 +231,9 @@ Is this query relevant to Boston events, considering the conversation history?""
         - check_weather: Checks weather forecast for a specific location and date
         - get_directions: Gets directions and travel information between two locations
         - get_event_reviews: Gets reviews and sentiment about an event
+
+        IMPORTANT: Return your response as a simple JSON array of strings.
+        Example: ["retrieve_events"] or ["retrieve_events", "check_weather"]
 
         IMPORTANT RULES:
         1. If the user asks about ANY kind of events (sports, music, family, etc.) or activities in Boston, 
@@ -246,8 +251,7 @@ Is this query relevant to Boston events, considering the conversation history?""
            and "get_event_reviews".
 
         Analyze the user's query and determine which tools are needed in what order.
-        Return a JSON list of tool names in the order they should be used.
-        Only include tools that are necessary for the user's query.
+        Return ONLY a JSON array of tool names, nothing else.
         
         Consider the full conversation history when determining which tools to use. 
         For example, if a user asks about directions to an event mentioned earlier, 
@@ -257,7 +261,6 @@ Is this query relevant to Boston events, considering the conversation history?""
         system_message = SystemMessage(content=system_content)
         
         # Create a message list including conversation history
-        # This is key for maintaining context between turns
         conversation_messages = []
         for msg in messages:
             conversation_messages.append(msg)
@@ -267,41 +270,62 @@ Is this query relevant to Boston events, considering the conversation history?""
         
         # Use message list directly with all conversation history
         response = self.llm.invoke(message_list)
-
-        # Rest of the method remains the same
+        #print(f"\n[DEBUG] LLM response for tool selection: {response.content}")
+        
+        # Try different parsing approaches
         try:
-            # Parse the tools to be used from the LLM response
-            tools_to_call = json.loads(response.content)
-
+            # First, clean the response content - sometimes it contains markdown formatting
+            content = response.content.strip()
+            if content.startswith("```json") and content.endswith("```"):
+                content = content[7:-3].strip()  # Remove ```json and ``` markers
+            elif content.startswith("```") and content.endswith("```"):
+                content = content[3:-3].strip()  # Remove ``` markers
+                
+            # Try to parse the JSON
+            tools_to_call = json.loads(content)
+            #print(f"\n[DEBUG] Parsed tools to call: {tools_to_call}")
+            
+            # Handle different formats the LLM might return
             if isinstance(tools_to_call, dict) and "tools" in tools_to_call:
                 tools_to_call = tools_to_call["tools"]
-
+            
             if not isinstance(tools_to_call, list):
                 tools_to_call = [tools_to_call]
-
+            
             # Filter out any invalid tool names
             valid_tools = list(self.tools.keys())
             tools_to_call = [tool for tool in tools_to_call if tool in valid_tools]
-
+            
             # Force inclusion of retrieve_events for event-related queries
             event_keywords = ["event", "happening", "activity", "show me", "suggest", "sports", 
-                            "concert", "game", "festival", "show", "performance"]
+                            "concert", "game", "festival", "show", "performance", "music"]
             if any(term in last_user_message.lower() for term in event_keywords):
                 if "retrieve_events" not in tools_to_call:
                     tools_to_call.insert(0, "retrieve_events")  # Add at the beginning
-
+            
             # If no valid tools were identified, go straight to final answer
             if not tools_to_call:
                 return {"need_final_answer": True}
-
+            
+            #print(f"\n[DEBUG] Final tools to call: {tools_to_call}")
+            
             return {
                 "tools_to_call": tools_to_call,
                 "tools_called": [],
                 "tool_results": {},
                 "current_tool": tools_to_call[0]  # Set the first tool to call
             }
-        except:
-            # If parsing fails, move to final answer
+        except Exception as e:
+            #print(f"\n[DEBUG] Error parsing tools response: {str(e)}")
+            # If parsing fails, default to using retrieve_events for event-related queries
+            if any(term in last_user_message.lower() for term in ["event", "happening", "music", "concert", "sports"]):
+                return {
+                    "tools_to_call": ["retrieve_events"],
+                    "tools_called": [],
+                    "tool_results": {},
+                    "current_tool": "retrieve_events"
+                }
+            # Otherwise, move to final answer
             return {"need_final_answer": True}
     
     def _check_if_more_tools_needed(self, state: State) -> Dict:
@@ -333,6 +357,7 @@ Is this query relevant to Boston events, considering the conversation history?""
         
         # Otherwise, route to the current tool
         current_tool = state.get("current_tool")
+        #print(f"[DEBUG] Current tool: {current_tool}")
         
         if current_tool == "retrieve_events":
             return "rag_tool"
@@ -354,6 +379,8 @@ Is this query relevant to Boston events, considering the conversation history?""
         if current_tool != "retrieve_events":
             return {}
         
+        #print("\n[DEBUG] Entering RAG tool node")
+        
         # Get all messages to provide context
         messages = state["messages"]
         
@@ -373,6 +400,8 @@ Is this query relevant to Boston events, considering the conversation history?""
         if not last_user_message:
             return {}
         
+        #print(f"\n[DEBUG] RAG query: {last_user_message}")
+        
         # Add context to help with understanding references to previous events
         enhanced_query = last_user_message
         if context:
@@ -382,7 +411,9 @@ Is this query relevant to Boston events, considering the conversation history?""
         
         # Execute the RAG tool with context
         try:
+            #print("\n[DEBUG] Calling retrieve_events function")
             result = retrieve_events(enhanced_query)
+            #print(f"\n[DEBUG] RAG result (first 100 chars): {result[:min(100, len(result))]}...")
             
             # Update the state with whatever the RAG returned
             tools_called = state.get("tools_called", [])
@@ -396,6 +427,7 @@ Is this query relevant to Boston events, considering the conversation history?""
                 "tool_results": tool_results
             }
         except Exception as e:
+            #print(f"\n[DEBUG] RAG error: {str(e)}")
             # If there's an exception, just return the error message
             error_message = f"Error retrieving event information: {str(e)}. Please try again or modify your query."
             

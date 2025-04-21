@@ -1,58 +1,59 @@
 import streamlit as st
+
+# ✅ MUST BE FIRST Streamlit command
+st.set_page_config(page_title="EventLens Chatbot", layout="wide")
+
 import requests
 import os
 
 FAST_API_URL = os.getenv("FAST_API_URL")
 
 def events_chatbot():
-    st.markdown(
-        """
-        <div style="text-align:center; padding: 20px 0;">
-            <h1 style="font-size: 3em;">🤖 EventLens Chatbot</h1>
-            <p style="font-size: 1.2em; color: #ccc;">
-                Get instant help with events in Boston!<br>
-                This assistant can help you with <strong>event info, directions, weather, and reviews</strong> — all in one place.
-            </p>
+    st.markdown("""
+        <div style="text-align: center;">
+            <h1>🤖 EventLens Chatbot</h1>
+            <p style="font-size: 18px;">Get details about events, directions, weather, and reviews — all in one place!</p>
         </div>
-        """,
-        unsafe_allow_html=True
-    )
+    """, unsafe_allow_html=True)
 
     if 'token' not in st.session_state or not st.session_state.token:
-        st.error("🔒 Please log in to access the chatbot.")
+        st.warning("Please login to use the chatbot.")
         return
 
-    # Initialize message history
-    if "chat_messages" not in st.session_state:
-        st.session_state.chat_messages = []
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
 
-    # Display chat history
-    for message in st.session_state.chat_messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    for msg in st.session_state.chat_history:
+        role = msg["role"]
+        with st.chat_message(role):
+            st.markdown(msg["content"])
 
-    # Capture new message
     if prompt := st.chat_input("Ask me anything about events..."):
-        # Show user message in UI
         st.chat_message("user").markdown(prompt)
-        st.session_state.chat_messages.append({"role": "user", "content": prompt})
-
-        # Send to backend with chat history
-        payload = {
-            "messages": st.session_state.chat_messages
-        }
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
 
         try:
-            headers = {"Authorization": f"Bearer {st.session_state.token}"}
-            with st.spinner("Thinking..."):
-                response = requests.post(f"{FAST_API_URL}/events/chat", json=payload, headers=headers)
-                if response.status_code == 200:
-                    reply = response.json().get("answer", "🤔 Sorry, I couldn't find anything useful.")
-                else:
-                    reply = f"⚠️ Server error: {response.status_code}"
-        except Exception as e:
-            reply = f"❌ Error: {str(e)}"
+            headers = {
+                "Authorization": f"Bearer {st.session_state.token}"
+            }
 
-        # Show assistant reply
-        st.chat_message("assistant").markdown(reply)
-        st.session_state.chat_messages.append({"role": "assistant", "content": reply})
+            payload = {
+                "message": prompt,
+                "history": st.session_state.chat_history
+            }
+
+            response = requests.post(
+                f"{FAST_API_URL}/events/chat",
+                headers=headers,
+                json=payload
+            )
+
+            if response.status_code == 200:
+                assistant_reply = response.json()["response"]
+                st.chat_message("assistant").markdown(assistant_reply)
+                st.session_state.chat_history.append({"role": "assistant", "content": assistant_reply})
+            else:
+                st.chat_message("assistant").markdown(f"⚠️ Server error: {response.status_code} - {response.text}")
+
+        except Exception as e:
+            st.chat_message("assistant").markdown(f"❌ Exception: {str(e)}")
