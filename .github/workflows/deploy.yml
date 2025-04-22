@@ -60,7 +60,7 @@ jobs:
           eval "$(ssh-agent -s)"
           ssh-add ec2_key.pem
 
-          ssh -o StrictHostKeyChecking=no ubuntu@$EC2_SERVER_IP << 'EOF'
+          ssh -o StrictHostKeyChecking=no ubuntu@$SERVER_IP << 'EOF'
             # Stop and remove existing containers
             sudo docker ps -q --filter ancestor=${{ secrets.DOCKER_USER }}/eventlens-app:latest | xargs -r sudo docker stop
             sudo docker ps -a -q --filter ancestor=${{ secrets.DOCKER_USER }}/eventlens-app:latest | xargs -r sudo docker rm
