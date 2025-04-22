@@ -84,6 +84,7 @@ elif st.session_state.current_page == 'search':
 elif st.session_state.current_page == 'chatbot':
     events_chatbot()
 
+
 # Sidebar Navigation for Logged-in Users
 if st.session_state.get("logged_in", False):
     with st.sidebar:
