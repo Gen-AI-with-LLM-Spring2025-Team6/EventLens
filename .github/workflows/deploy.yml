@@ -47,6 +47,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+          
       - name: Build and Push Docker Image
         run: |
           sudo docker buildx build --platform linux/arm64 -t ${{ secrets.DOCKER_USER }}/eventlens-app:latest --push .
