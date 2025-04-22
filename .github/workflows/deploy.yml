@@ -13,6 +13,7 @@ jobs:
 
     env:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_USER: ${{ secrets.DOCKER_USER }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       EC2_PRIVATE_KEY: ${{ secrets.EC2_PRIVATE_KEY }}
       EC2_SERVER_IP: ${{ secrets.EC2_SERVER_IP }}
@@ -48,7 +49,7 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-          sudo docker buildx build --platform linux/arm64 -t ${{ secrets.DOCKER_USERNAME }}/eventlens-app:latest --push .
+          sudo docker buildx build --platform linux/arm64 -t ${{ secrets.DOCKER_USER }}/eventlens-app:latest --push .
 
       - name: Deploy to EC2 via SSH
         run: |
@@ -59,11 +60,11 @@ jobs:
 
           ssh -o StrictHostKeyChecking=no ubuntu@$EC2_SERVER_IP << 'EOF'
             # Stop and remove existing containers
-            sudo docker ps -q --filter ancestor=${{ secrets.DOCKER_USERNAME }}/eventlens-app:latest | xargs -r sudo docker stop
-            sudo docker ps -a -q --filter ancestor=${{ secrets.DOCKER_USERNAME }}/eventlens-app:latest | xargs -r sudo docker rm
+            sudo docker ps -q --filter ancestor=${{ secrets.DOCKER_USER }}/eventlens-app:latest | xargs -r sudo docker stop
+            sudo docker ps -a -q --filter ancestor=${{ secrets.DOCKER_USER }}/eventlens-app:latest | xargs -r sudo docker rm
 
             # Pull latest image
-            sudo docker pull ${{ secrets.DOCKER_USERNAME }}/eventlens-app:latest
+            sudo docker pull ${{ secrets.DOCKER_USER }}/eventlens-app:latest
 
             # Run container with all required ENV variables
             sudo docker run -d \
@@ -81,5 +82,5 @@ jobs:
               -e SNOWFLAKE_SCHEMA="${{ secrets.SNOWFLAKE_SCHEMA }}" \
               -e SNOWFLAKE_WAREHOUSE="${{ secrets.SNOWFLAKE_WAREHOUSE }}" \
               -e SNOWFLAKE_ROLE="${{ secrets.SNOWFLAKE_ROLE }}" \
-              ${{ secrets.DOCKER_USERNAME }}/eventlens-app:latest
+              ${{ secrets.DOCKER_USER }}/eventlens-app:latest
           EOF
