@@ -50,6 +50,7 @@ jobs:
         run: |
             docker buildx build --platform linux/arm64 -t ${{ secrets.DOCKER_USER }}/eventlens-app:latest --push .
 
+            
       - name: Deploy to EC2 via SSH
         env:
           PRIVATE_KEY: ${{ secrets.EC2_PRIVATE_KEY }}
