@@ -51,7 +51,6 @@ def landing_page():
         - 🧠 Get personalized **event recommendations** based on your interests
         - 🗺️ Explore what's happening in Boston using our **search assistant**
         - 💬 Chat with our smart **event discovery bot**
-        - 📅 Save events you like for later tracking
         """
     )
 
