@@ -47,7 +47,7 @@ def events_chatbot():
 
             # Stage 1: Analyzing spinner
             with st.spinner("🧠 Analyzing your query..."):
-                time.sleep(2)
+                time.sleep(1)
 
             # Stage 2: Fetching results spinner
             with st.spinner("🔍 Fetching results..."):
