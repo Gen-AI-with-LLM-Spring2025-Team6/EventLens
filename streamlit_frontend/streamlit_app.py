@@ -65,6 +65,7 @@ def landing_page():
             st.session_state.current_page = 'register'
             st.rerun()
 
+
 # Page Routing
 if st.session_state.current_page == 'landing':
     landing_page()
