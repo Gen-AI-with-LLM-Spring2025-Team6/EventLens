@@ -52,8 +52,11 @@ jobs:
             docker buildx build --platform linux/arm64 -t ${{ secrets.DOCKER_USER }}/eventlens-app:latest --push .
 
       - name: Deploy to EC2 via SSH
+        env:
+          PRIVATE_KEY: ${{ secrets.EC2_PRIVATE_KEY }}
+          SERVER_IP: ${{ secrets.EC2_SERVER_IP }}
         run: |
-          echo "$EC2_PRIVATE_KEY" > ec2_key.pem
+          echo "$PRIVATE_KEY" > ec2_key.pem
           chmod 600 ec2_key.pem
           eval "$(ssh-agent -s)"
           ssh-add ec2_key.pem
