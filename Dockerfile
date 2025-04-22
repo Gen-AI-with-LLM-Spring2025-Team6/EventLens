@@ -13,10 +13,10 @@ RUN pip install --no-cache-dir -r /code/requirements.txt
 # Copy application code
 COPY ./fastapi_backend /code/fastapi_backend
 COPY ./streamlit_frontend /code/streamlit_frontend
-COPY .env /code/.env
+#COPY .env /code/.env
 
 
-ENV PYTHONPATH="/code:${PYTHONPATH}"
+#ENV PYTHONPATH="/code:${PYTHONPATH}"
 
 # Expose necessary ports
 EXPOSE 8000 8501
