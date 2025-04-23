@@ -19,6 +19,6 @@ COPY ./streamlit_frontend /code/streamlit_frontend
 #ENV PYTHONPATH="/code:${PYTHONPATH}"
 
 # Expose necessary ports
-EXPOSE 8000 8501
+EXPOSE 8000 8501 
 
 CMD ["/bin/bash", "-c", "uvicorn fastapi_backend.fast_api.fast_api:app --host 0.0.0.0 --port 8000 --reload & streamlit run /code/streamlit_frontend/streamlit_app.py --server.port 8501"]
