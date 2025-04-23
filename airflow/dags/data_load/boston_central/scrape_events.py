@@ -349,7 +349,7 @@ def get_event_links(driver):
             try:
                 # Find the link and get details
                 a_element = event.find_element(By.TAG_NAME, "a")
-                title = a_element.text.strip()
+                Event_Title = a_element.text.strip()
                 link = safe_get_attribute(a_element, "href")
                 
                 # Get date from bold elements
@@ -359,8 +359,8 @@ def get_event_links(driver):
                 # Store basic info
                 if link and link != "N/A":
                     event_data.append({
-                        "title": title,
-                        "link": link,
+                        "Event_Title": Event_Title,
+                        "Event_URL": link,
                         "date_text": date_text
                     })
             except Exception as e:
@@ -373,24 +373,24 @@ def get_event_links(driver):
         logger.error(f"Failed to extract event links: {e}")
         return []
 
-def extract_event_details(driver, url, title, date_text):
+def extract_event_details(driver, url, Event_Title, date_text):
     """Extract detailed information for a single event"""
     event_details = {
-        "title": title,
-        "link": url
+        "Event_Title": Event_Title,
+        "Event_URL": url
     }
     
     # Process dates
     dates = extract_dates(date_text)
     if len(dates) > 1:
-        event_details['start_date'] = dates[0]
-        event_details['end_date'] = dates[1]
+        event_details['Start_Date'] = dates[0]
+        event_details['End_Date'] = dates[1]
     else: 
-        event_details['start_date'] = dates[0]
-        event_details['end_date'] = ''
+        event_details['Start_Date'] = dates[0]
+        event_details['End_Date'] = ''
     
     try:
-        logger.info(f"Navigating to event page: {title}")
+        logger.info(f"Navigating to event page: {Event_Title}")
         driver.get(url)
         
         # Wait for page to load with random timing
@@ -416,21 +416,24 @@ def extract_event_details(driver, url, title, date_text):
             return "N/A"
         
         # Extract basic fields
-        event_details['hours'] = extract_field('Hours:')
-        event_details['ages'] = extract_field('Ages:')
-        event_details['Indoor/Outdoor'] = extract_field('In/Outdoor:')
-        event_details['Category'] = extract_field('Category:')
+        event_details['Start_Time'] = extract_field('Hours:')
+        event_details['End_Time'] = extract_field('Hours:')
+        event_details['Occurrences'] = ''
+        event_details['Image_URL'] = ''
+        #event_details['ages'] = extract_field('Ages:')
+        #event_details['Indoor/Outdoor'] = extract_field('In/Outdoor:')
+        event_details['Categories'] = extract_field('Category:')
         
         # Extract website
-        website_element = soup.find('a', attrs={'name': 'website'})
-        if website_element:
-            next_p = website_element.find_next('p')
-            if next_p and next_p.find('a'):
-                event_details['website'] = next_p.find('a')['href']
-            else:
-                event_details['website'] = "N/A"
-        else:
-            event_details['website'] = "N/A"
+        # website_element = soup.find('a', attrs={'name': 'website'})
+        # if website_element:
+        #     next_p = website_element.find_next('p')
+        #     if next_p and next_p.find('a'):
+        #         event_details['website'] = next_p.find('a')['href']
+        #     else:
+        #         event_details['website'] = "N/A"
+        # else:
+        #     event_details['website'] = "N/A"
         
         # Extract location from iframe
         iframe = soup.find('iframe')
@@ -438,17 +441,19 @@ def extract_event_details(driver, url, title, date_text):
             src_url = iframe['src']
             parsed_url = urlparse(src_url)
             query_params = parse_qs(parsed_url.query)
-            event_details['location'] = (query_params.get('q', [''])[0]).upper()
+            event_details['Location'] = (query_params.get('q', [''])[0]).upper()
+            event_details['Full_Address'] = (query_params.get('q', [''])[0]).upper()
         else:
-            event_details['location'] = "N/A"
+            event_details['Location'] = "N/A"
+            event_details['Full_Address'] = "N/A"
         
         # Extract phone
-        phone_text = soup.find(text=re.compile(r'Phone:\s*\d+'))
-        if phone_text:
-            match = re.search(r'Phone:\s*(\d+)', phone_text)
-            event_details['phone'] = match.group(1) if match else 'N/A'
-        else:
-            event_details['phone'] = 'N/A'
+        # phone_text = soup.find(text=re.compile(r'Phone:\s*\d+'))
+        # if phone_text:
+        #     match = re.search(r'Phone:\s*(\d+)', phone_text)
+        #     event_details['phone'] = match.group(1) if match else 'N/A'
+        # else:
+        #     event_details['phone'] = 'N/A'
         
         # Extract description
         profile_anchor = soup.find('a', {'name': 'profile'})
@@ -465,28 +470,28 @@ def extract_event_details(driver, url, title, date_text):
                     text = sibling.get_text(" ", strip=True)
                     if text:
                         description_parts.append(text)
-            event_details['description'] = " ".join(description_parts).strip()
+            event_details['Description'] = " ".join(description_parts).strip()
         else:
-            event_details['description'] = "N/A"
+            event_details['Description'] = "N/A"
         
         # Extract cost
         cost_row = soup.find('td', string=lambda t: t and 'Cost:' in t)
         if cost_row and cost_row.find_next_sibling('td'):
             cost_summary = cost_row.find_next_sibling('td').get_text(strip=True)
             if 'Free' in cost_summary:
-                event_details['cost'] = 'Free'
+                event_details['Admission'] = 'Free'
             elif 'below' in cost_summary:
                 cost_detail = soup.find('span', class_='MainText', string=lambda t: t and t.startswith('$'))
-                event_details['cost'] = cost_detail.get_text(strip=True) if cost_detail else cost_summary
+                event_details['Admission'] = cost_detail.get_text(strip=True) if cost_detail else cost_summary
             else:
-                event_details['cost'] = cost_summary
+                event_details['Admission'] = cost_summary
         else:
-            event_details['cost'] = 'N/A'
+            event_details['Admission'] = 'N/A'
             
-        logger.info(f"Successfully extracted details for: {title}")
+        logger.info(f"Successfully extracted details for: {Event_Title}")
         
     except Exception as e:
-        logger.error(f"Error extracting details for {title}: {e}")
+        logger.error(f"Error extracting details for {Event_Title}: {e}")
         # Set default values for fields
         for field in ['hours', 'website', 'location', 'ages', 'Indoor/Outdoor', 
                       'Category', 'phone', 'description', 'cost']:
@@ -518,10 +523,11 @@ def load_progress(filename="event_progress.json"):
 def scrape_events(max_events=5, continue_from_last=True):
     """Main function to scrape events"""
     # Load any existing progress
-    all_event_data = load_progress() if continue_from_last else []
+    # all_event_data = load_progress() if continue_from_last else []
+    all_event_data = []
     
     # Track which URLs we've already processed
-    processed_urls = {event['link'] for event in all_event_data if 'link' in event}
+    processed_urls = {event['Event_URL'] for event in all_event_data if 'Event_URL' in event}
     
     try:
         # Step 1: Get all event links from the main page
@@ -545,15 +551,15 @@ def scrape_events(max_events=5, continue_from_last=True):
             if events_processed >= max_events:
                 break
                 
-            url = event['link']
-            title = event['title']
+            url = event['Event_URL']
+            Event_Title = event['Event_Title']
             
             # Skip if already processed
             if url in processed_urls:
-                logger.info(f"Skipping already processed event: {title}")
+                logger.info(f"Skipping already processed event: {Event_Title}")
                 continue
                 
-            logger.info(f"Processing event {events_processed+1}/{max_events}: {title}")
+            logger.info(f"Processing event {events_processed+1}/{max_events}: {Event_Title}")
             
             # Create a new browser session for each event
             event_driver = None
@@ -565,7 +571,7 @@ def scrape_events(max_events=5, continue_from_last=True):
                 event_details = extract_event_details(
                     event_driver, 
                     url, 
-                    title, 
+                    Event_Title, 
                     event['date_text']
                 )
                 
@@ -578,7 +584,7 @@ def scrape_events(max_events=5, continue_from_last=True):
                 save_progress(all_event_data)
                 
             except Exception as e:
-                logger.error(f"Error processing event {title}: {e}")
+                logger.error(f"Error processing event {Event_Title}: {e}")
             finally:
                 # Close the browser
                 if event_driver:
