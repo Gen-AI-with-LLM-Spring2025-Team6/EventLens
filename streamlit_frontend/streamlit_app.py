@@ -51,10 +51,8 @@ def landing_page():
         - 🧠 Get personalized **event recommendations** based on your interests
         - 🗺️ Explore what's happening in Boston using our **search assistant**
         - 💬 Chat with our smart **event discovery bot**
-        - 📅 Save events you like for later tracking
         """
     )
-
 
     col1, col2 = st.columns(2)
     with col1:
@@ -65,6 +63,7 @@ def landing_page():
         if st.button("📝 Register"):
             st.session_state.current_page = 'register'
             st.rerun()
+
 
 # Page Routing
 if st.session_state.current_page == 'landing':
@@ -84,6 +83,7 @@ elif st.session_state.current_page == 'search':
     search_events()
 elif st.session_state.current_page == 'chatbot':
     events_chatbot()
+
 
 # Sidebar Navigation for Logged-in Users
 if st.session_state.get("logged_in", False):

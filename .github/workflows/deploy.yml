@@ -1,0 +1,88 @@
+name: EventLens App CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_USER: ${{ secrets.DOCKER_USER }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+      SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      FAST_API_URL: ${{ secrets.FAST_API_URL }}
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+      SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up QEMU for Cross-Platform Build
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+ 
+      - name: Build and Push Docker Image
+        run: |
+            docker buildx build --platform linux/arm64 -t ${{ secrets.DOCKER_USER }}/eventlens-app:latest --push .
+
+            
+      - name: Deploy to EC2 via SSH
+        env:
+          PRIVATE_KEY: ${{ secrets.EC2_PRIVATE_KEY }}
+          SERVER_IP: ${{ secrets.EC2_SERVER_IP }}
+        run: |
+          echo "$PRIVATE_KEY" > ec2_key.pem
+          chmod 600 ec2_key.pem
+          eval "$(ssh-agent -s)"
+          ssh-add ec2_key.pem
+
+          ssh -o StrictHostKeyChecking=no ubuntu@$SERVER_IP << 'EOF'
+            # Stop and remove existing containers
+            sudo docker ps -q --filter ancestor=${{ secrets.DOCKER_USER }}/eventlens-app:latest | xargs -r sudo docker stop
+            sudo docker ps -a -q --filter ancestor=${{ secrets.DOCKER_USER }}/eventlens-app:latest | xargs -r sudo docker rm
+
+            # Pull latest image
+            sudo docker pull ${{ secrets.DOCKER_USER }}/eventlens-app:latest
+
+            # Run container with all required ENV variables
+            sudo docker run -d \
+              -p 8000:8000 -p 8501:8501 \
+              -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+              -e OPENWEATHER_API_KEY="${{ secrets.OPENWEATHER_API_KEY }}" \
+              -e SERPAPI_API_KEY="${{ secrets.SERPAPI_API_KEY }}" \
+              -e GOOGLE_MAPS_API_KEY="${{ secrets.GOOGLE_MAPS_API_KEY }}" \
+              -e SECRET_KEY="${{ secrets.SECRET_KEY }}" \
+              -e FAST_API_URL="${{ secrets.FAST_API_URL }}" \
+              -e SNOWFLAKE_ACCOUNT="${{ secrets.SNOWFLAKE_ACCOUNT }}" \
+              -e SNOWFLAKE_USER="${{ secrets.SNOWFLAKE_USER }}" \
+              -e SNOWFLAKE_PASSWORD="${{ secrets.SNOWFLAKE_PASSWORD }}" \
+              -e SNOWFLAKE_DATABASE="${{ secrets.SNOWFLAKE_DATABASE }}" \
+              -e SNOWFLAKE_SCHEMA="${{ secrets.SNOWFLAKE_SCHEMA }}" \
+              -e SNOWFLAKE_WAREHOUSE="${{ secrets.SNOWFLAKE_WAREHOUSE }}" \
+              -e SNOWFLAKE_ROLE="${{ secrets.SNOWFLAKE_ROLE }}" \
+              ${{ secrets.DOCKER_USER }}/eventlens-app:latest
+          EOF
