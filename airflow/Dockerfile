@@ -57,6 +57,13 @@ COPY dags /opt/airflow/dags
 ENV AIRFLOW_UID=50000
 ENV AIRFLOW_HOME=/opt/airflow
 
+# Add Chrome-specific environment variables
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROME_DRIVER=/usr/bin/chromedriver
+
+# Increase shared memory size for Chrome
+ENV DBUS_SESSION_BUS_ADDRESS=/dev/null
+
 # Expose the webserver port
 EXPOSE 8080
 

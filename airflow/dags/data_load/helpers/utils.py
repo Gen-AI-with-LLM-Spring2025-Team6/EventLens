@@ -201,9 +201,9 @@ def classify_event_into_group(title, description, location, categories, cursor):
     """
     try:
         prompt = f"""
-You are an AI assistant helping categorize public events into meaningful groups.
-Each event can belong to **one or more** of the following 10 categories. Below is what each category means:
+You are an AI assistant that classifies public events into one or more of 10 specific categories.
 
+The categories are:
 1. **Arts & Culture** – Art, Exhibitions, Shows, Theater, Museums, History, Photography, Movies
 2. **Food & Drink** – Food, Drinks, Cooking, Tastings, Culinary, Brewery, Wine, Coffee
 3. **Nightlife & Parties** – Nightlife, Bars, Music, DJ, Clubbing, Party, Comedy Show
@@ -215,13 +215,23 @@ Each event can belong to **one or more** of the following 10 categories. Below i
 9. **Fairs, Festivals & Shopping** – Festivals & Fairs, Markets, Shopping, Local Vendors, Seasonal
 10. **Other** – Events that do not fit any of the above categories
 
-Return only the category names (e.g., ["Food & Drink", "Nightlife & Parties"]) without any explanation or extra formatting or description strictly. The Output should be only like ["Food & Drink", "Nightlife & Parties"]
+Your task is to return only the applicable categories for the event as a plain comma-separated list (e.g., Food & Drink, Nightlife & Parties).
+
+✱ DO NOT return anything else. No explanations, no bullet points, no lists, no quotes, no brackets, and no introductory text.
+✱ DO NOT include the event title or description in your response.
+✱ The entire output should be just the category names, separated by commas.
 
 Event Details:
 - Title: {title}
 - Description: {description}
 - Location: {location}
-- Additional Info: {categories}
+
+Your task is to return only the applicable categories for the event as a plain comma-separated list (e.g., Food & Drink, Nightlife & Parties).
+
+✱ DO NOT return anything else. No explanations, no bullet points, no lists, no quotes, no brackets, and no introductory text.
+✱ DO NOT include the event title or description in your response.
+✱ The entire output should be just the category names, separated by commas.
+
 """
 
         query = """
@@ -237,12 +247,12 @@ Event Details:
                 if isinstance(categories, list):
                     return categories
             except Exception:
-                return [result[0].strip()]
-        return ["Other"]
+                return result[0].strip()
+        return "Other"
 
     except Exception as e:
         print(f"Error classifying event: {str(e)}")
-        return ["Other"]
+        return "Other"
 
 
 def extract_end_date_from_occurrence(occurrence_text: str, cursor, fallback_end_date: str) -> str:
@@ -564,3 +574,82 @@ def describe_video_from_url(video_url: str) -> str:
 
     except Exception as e:
         return f"Video description unavailable - Error: {str(e)}"
+
+def format_time_from_fields(date_str, time_str, cursor, is_end_time=False):
+    """
+    Extracts and formats the time from date and time fields using Snowflake Cortex.
+    
+    Args:
+        date_str (str): The date string (e.g., '04/20/2025' or 'April 20, 2025')
+        time_str (str): The time string (e.g., '10:30 AM - 12:30 PM')
+        cursor: Snowflake cursor to execute the Cortex query
+        is_end_time (bool): If True, extracts the end time from a range, otherwise the start time
+        
+    Returns:
+        str: Formatted time string in the format 'HH:MMam/pm'
+    """
+    try:
+        prompt = f"""
+        You are a datetime formatting expert. Extract the {"end" if is_end_time else "start"} time from the given input.
+        
+        Date: {date_str}
+        Time: {time_str}
+        Format to extract: {"end time" if is_end_time else "start time"}
+        
+        Return the result in this exact format: 'HH:MMam/pm'.
+        For example: '10:30am' or '12:30pm'.
+        
+        If the time contains a range (e.g., '10:30 AM - 12:30 PM'), extract the {"end" if is_end_time else "start"} time.
+        Here, the start time is 10:30AM and the end time is 12:30PM
+        If any information is missing or invalid, return 'Not Available'.
+        
+        Strictly return only the formatted time with no other text or explanation.
+        """
+
+        query = "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-large', %s)"
+        cursor.execute(query, (prompt,))
+        result = cursor.fetchone()
+
+        if result and result[0]:
+            formatted_time = result[0].strip().lower()
+            # Basic validation to ensure we got a properly formatted response
+            if re.match(r'^\d{1,2}:\d{2}(am|pm)$', formatted_time):
+                return formatted_time
+            elif formatted_time == 'Not Available':
+                return formatted_time
+
+        return "Not Available"
+
+    except Exception as e:
+        logger.error(f"Error formatting time: {str(e)}")
+        return "Not Available"
+
+
+def extract_start_time(start_date, start_time, cursor):
+    """
+    Extracts and formats the start time from separate date and time fields.
+    
+    Args:
+        start_date (str): The start date (e.g., '04/20/2025')
+        start_time (str): The start time (e.g., '10:30 AM - 12:30 PM')
+        cursor: Snowflake cursor to execute the Cortex query
+        
+    Returns:
+        str: Formatted start time in the format 'HH:MMam/pm'
+    """
+    return format_time_from_fields(start_date, start_time, cursor, is_end_time=False)
+
+
+def extract_end_time(end_date, end_time, cursor):
+    """
+    Extracts and formats the end time from separate date and time fields.
+    
+    Args:
+        end_date (str): The end date (e.g., '04/20/2025')
+        end_time (str): The end time (e.g., '10:30 AM - 12:30 PM')
+        cursor: Snowflake cursor to execute the Cortex query
+        
+    Returns:
+        str: Formatted end time in the format 'HH:MMam/pm'
+    """
+    return format_time_from_fields(end_date, end_time, cursor, is_end_time=True)
