@@ -1,92 +1,115 @@
-import snowflake.connector
-import pandas as pd
-import json
-import os
-import logging
-from data_load.parameters.parameter_config  import (SNOWFLAKE_ACCOUNT,
-SNOWFLAKE_USER, SNOWFLAKE_PASSWORD, SNOWFLAKE_DATABASE, SNOWFLAKE_SCHEMA, SNOWFLAKE_WAREHOUSE,
-SNOWFLAKE_ROLE)
+# Import necessary libraries
+import snowflake.connector  # Snowflake connector to interact with the Snowflake database
+import pandas as pd  # Pandas library for handling data manipulation
+import json  # JSON library for parsing and handling JSON data
+import logging  # Logging library for logging messages and errors
+from data_load.parameters.parameter_config import (
+    SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD,
+    SNOWFLAKE_DATABASE, SNOWFLAKE_SCHEMA, SNOWFLAKE_WAREHOUSE, 
+    SNOWFLAKE_ROLE
+)  # Importing configuration parameters
 
+# Website settings for the application
+WEBSITE_NAME = "meetboston"  # The name of the website
+Staging_table = f"{WEBSITE_NAME.upper()}_EVENT_DETAILS"  # Defining the staging table name dynamically based on the website name
 
-
-
-#website settings
-
-WEBSITE_NAME = "MeetBoston"
-Staging_table = f"{WEBSITE_NAME.upper()}_EVENT_DETAILS"
-
-#setting up logging
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+# Setting up logging configuration for debugging and tracking process
+logger = logging.getLogger(__name__)  # Create a logger object for this script
+logging.basicConfig(level=logging.INFO)  # Set the logging level to INFO, which includes info, warning, error, and critical messages
 
 def get_snowflake_connection():
-    """
-    Create and return a Snowflake connection
-    """
+    """Create and return a Snowflake connection"""
     try:
+        # Attempt to create a connection to Snowflake using provided credentials and configurations
         return snowflake.connector.connect(
-            user=SNOWFLAKE_USER,
-            password=SNOWFLAKE_PASSWORD,
-            account=SNOWFLAKE_ACCOUNT,
-            warehouse=SNOWFLAKE_WAREHOUSE,
-            database=SNOWFLAKE_DATABASE,
-            schema=SNOWFLAKE_SCHEMA,
-            role=SNOWFLAKE_ROLE,
-            client_session_keep_alive=True
+            user=SNOWFLAKE_USER,  # Snowflake user
+            password=SNOWFLAKE_PASSWORD,  # Snowflake password
+            account=SNOWFLAKE_ACCOUNT,  # Snowflake account
+            warehouse=SNOWFLAKE_WAREHOUSE,  # Snowflake warehouse
+            database=SNOWFLAKE_DATABASE,  # Snowflake database
+            schema=SNOWFLAKE_SCHEMA,  # Snowflake schema
+            role=SNOWFLAKE_ROLE,  # Snowflake role
+            client_session_keep_alive=True  # Keep the session alive
         )
     except Exception as e:
+        # If there is an error in connecting, log the error message
         logger.error(f"Error connecting to Snowflake: {str(e)}")
-        raise
+        raise  # Re-raise the exception to stop further execution
 
 def load_to_staging(**context):
     try:
+        # Fetch the task instance (ti) from the context for passing data between tasks in Airflow
         ti = context['ti']
-        extracted_file_path = ti.xcom_pull(task_ids='Extraction', key='extracted_events')
+        # Retrieve the path of the extracted file from the previous task using XCom
+        extracted_file_path = ti.xcom_pull(task_ids='Extract', key='extracted_events')
+        
+        # Open the extracted file and load its content as JSON
         with open(extracted_file_path, 'r') as f:
-            df_events = pd.DataFrame(json.load(f))
+            events = json.load(f)  # Parse the JSON data into a Python list of dictionaries
+        
+        # Check if the events data is empty; if no events, log a warning and exit
+        if not events:
+            logger.warning("No events data to insert.")
+            return  # If no events, no need to continue further
+        
+        # Convert the events data into a Pandas DataFrame for easier data manipulation
+        df_events = pd.DataFrame(events)
+        
+        # Get the Snowflake connection by calling the function defined above
         conn = get_snowflake_connection()
-        cursor = conn.cursor()
-        full_table_name = f"{SNOWFLAKE_SCHEMA}.{WEBSITE_NAME}"
+        cursor = conn.cursor()  # Create a cursor to execute SQL queries
+        
+        # Define the full table name by combining the schema and the table name
+        full_table_name = f"{SNOWFLAKE_SCHEMA}.{WEBSITE_NAME}_EVENT_DETAILS"
+
+        # Prepare the SQL insert query to insert the events into Snowflake
         insert_query = f"""
         INSERT INTO {full_table_name} (
-            TITLE,
-            DESCRIPTION,
-            FULL_ADDRESS,
-            EVENT_DATES,
-            IMAGE_URL,
-            BUY_TICKETS_LINK,
-            LATITUDE,
-            LONGITUDE,
-            LINK
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            TITLE,  # Column for event title
+            DESCRIPTION,  # Column for event description
+            FULL_ADDRESS,  # Column for event address
+            EVENT_DATES,  # Column for event dates
+            IMAGE_URL,  # Column for event image URL
+            BUY_TICKETS_LINK,  # Column for event ticket link
+            LATITUDE,  # Column for latitude of the event
+            LONGITUDE,  # Column for longitude of the event
+            LINK  # Column for event link
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)  # Placeholder for the data to insert
         """
+
+        # Prepare the data for insertion into Snowflake
+        # Create a list of tuples where each tuple contains the values for one event
         data_to_insert = [
             (
-                row.get("TITLE", ""),
-                row.get("DESCRIPTION", ""),
-                row.get("FULL_ADDRESS", ""),
-                row.get("EVENT_DATES", ""),
-                row.get("IMAGE_URL", ""),
-                row.get("BUY_TICKETS_LINK", ""),
-                row.get("LATITUDE", ""),
-                row.get("LONGITUDE", ""),
-                row.get("LINK", ""),
-                
+                row.get("TITLE", ""),  # Get event title, default to empty string if not present
+                row.get("DESCRIPTION", ""),  # Get event description, default to empty string
+                row.get("FULL_ADDRESS", ""),  # Get full address, default to empty string
+                row.get("EVENT_DATES", ""),  # Get event dates, default to empty string
+                row.get("IMAGE_URL", ""),  # Get image URL, default to empty string
+                row.get("BUY_TICKETS_LINK", ""),  # Get buy tickets link, default to empty string
+                row.get("LATITUDE", 0.0),  # Get latitude, default to 0.0 if not present
+                row.get("LONGITUDE", 0.0),  # Get longitude, default to 0.0 if not present
+                row.get("LINK", "")  # Get event link, default to empty string
             )
-            for row in df_events
+            for row in events  # Loop through all events and create a tuple for each
         ]
 
-        # Execute insert
-        cursor.executemany(insert_query, data_to_insert)
+        # Execute the insert query using the data prepared above
+        cursor.executemany(insert_query, data_to_insert)  # Insert multiple records at once
+        
+        # Commit the transaction to ensure the data is saved in Snowflake
         conn.commit()
+        # Log the number of records inserted for informational purposes
         logger.info(f"Inserted {len(data_to_insert)} records into {full_table_name}")
 
+        # Close the cursor and connection to free up resources
         cursor.close()
         conn.close()
 
-        # Pass path to next task
+        # Push the extracted file path to the next task in the workflow using XCom
         context['ti'].xcom_push(key='events_staged', value=extracted_file_path)
 
     except Exception as e:
+        # Log any errors that occur during the loading process
         logger.error(f"Error loading to Snowflake staging: {str(e)}")
-        raise
+        raise  # Re-raise the exception to stop further execution
