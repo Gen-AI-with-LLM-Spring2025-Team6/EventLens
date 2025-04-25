@@ -204,6 +204,7 @@ def scrape_boston_gov(**context):
         logger.info(f"Successfully scraped {len(df_events_details)} events and saved to {output_file}")
         context['ti'].xcom_push(key='events_data', value=output_file)
         return df_events_details
+    
 
     except Exception as e:
         logger.error(f"Error scraping Boston Gov: {str(e)}")
