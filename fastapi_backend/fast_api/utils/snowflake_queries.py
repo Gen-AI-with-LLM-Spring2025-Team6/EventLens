@@ -25,6 +25,7 @@ def vector_search_snowflake(query, conn, table_name, embedding_col, text_col, mo
                 SNOWFLAKE.CORTEX.EMBED_TEXT_1024(%s, %s)
             ) AS similarity
         FROM {table_name}
+        WHERE source_website != 'boston_central'
         ORDER BY similarity DESC
         LIMIT {limit}
         """

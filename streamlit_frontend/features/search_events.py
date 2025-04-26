@@ -52,6 +52,7 @@ def search_events():
 
                 if response.status_code == 200:
                     events = response.json().get("events", [])
+                    #print(events)
                     st.session_state.search_results = events
                     if not events:
                         st.warning("No events matched your search.")
