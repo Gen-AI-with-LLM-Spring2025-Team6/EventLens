@@ -309,7 +309,9 @@ def extract_directions_parameters(query: str) -> Dict:
     
     try:
         # Parse the JSON response
-        parameters = json.loads(response.content)
+        content = response.content
+        cleaned = content.strip("```json\n").strip("```").strip()
+        parameters = json.loads(cleaned)
         
         # Default mode to "driving" if not specified
         if not parameters.get("mode"):

@@ -78,14 +78,15 @@ class EventRecommendationGraph:
             5. Follow-up questions about previously mentioned events
 
             CRITICAL: Treat follow-up questions as RELEVANT even when they don't explicitly mention events/Boston. Examples:
-            - "How's the weather?" (after discussing a Boston event)
-            - "How do I get there?" (referring to a previously mentioned venue)
-            - "What time does it start?" (referring to a previously mentioned event)
-            - "Are tickets still available?" (about a previously mentioned event)
-            - "Can you tell me more about it?" (about a previously mentioned event)
-            - "What are people saying about it?" (asking for reviews)
+            - "How's the weather?"
+            - "How do I get there?"
+            - "How are the reviews about this event?"
+            - "What time does it start?"
+            - "Are tickets still available?"
+            - "Can you tell me more about it?"
+            - "What are people saying about it?"
 
-            This classification MUST consider the ENTIRE conversation history to identify follow-up questions. 
+            This classification MUST consider the ENTIRE conversation history to identify follow-up questions.
 
             Return ONLY "relevant" or "not_relevant" - nothing else., no additional text strictly.
         """
@@ -258,11 +259,7 @@ Is this query relevant to Boston events, considering the conversation history?""
         # Try different parsing approaches
         try:
             # First, clean the response content - sometimes it contains markdown formatting
-            content = response.content.strip()
-            if content.startswith("```json") and content.endswith("```"):
-                content = content[7:-3].strip()  # Remove ```json and ``` markers
-            elif content.startswith("```") and content.endswith("```"):
-                content = content[3:-3].strip()  # Remove ``` markers
+            content = response.content.strip("```json\n").strip("```").strip()
                 
             # Try to parse the JSON
             tools_to_call = json.loads(content)
@@ -656,7 +653,7 @@ Is this query relevant to Boston events, considering the conversation history?""
         
         Include specific details from the tools' results when available:
         - Event details from the retrieve_events tool
-        - Weather information from the check_weather tool. If maps link is available include that in your final answer. 
+        - Weather information from the check_weather tool. If maps link is available include that in your final answer.
         - Directions and travel info from the get_directions tool
         - Reviews and sentiment from the get_event_reviews tool
         
@@ -695,7 +692,6 @@ Is this query relevant to Boston events, considering the conversation history?""
             I can't help with general knowledge questions or topics unrelated to Boston events.
             
             Could you please ask me about events, activities, or venues in Boston instead?"""
-            
             
             # Create message objects
             human_msg = HumanMessage(content=message)

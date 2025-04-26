@@ -159,7 +159,9 @@ def analyze_sentiment_with_llm(reviews: List[str]) -> Dict:
     
     try:
         # Parse the JSON response
-        sentiment_results = json.loads(response.content)
+        content = response.content
+        cleaned = content.strip("```json\n").strip("```").strip()
+        sentiment_results = json.loads(cleaned)
         return sentiment_results
     except:
         # If parsing fails, return a basic sentiment result
@@ -208,7 +210,9 @@ def extract_event_from_query(query: str) -> Tuple[str, Optional[str]]:
     
     try:
         # Parse the JSON response
-        extraction_results = json.loads(response.content)
+        content = response.content
+        cleaned = content.strip("```json\n").strip("```").strip()
+        extraction_results = json.loads(cleaned)
         return extraction_results["event_name"], extraction_results.get("location")
     except:
         # If parsing fails, use the whole query as the event name
