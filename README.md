@@ -2,6 +2,7 @@
 
 ## Application Links
 - **Business Poster**: https://drive.google.com/file/d/1NYmqo8_Q9mGNbSmQIywl05yb5XfP0K_D/view?usp=sharing
+- **Pitch Deck**: https://docs.google.com/presentation/d/1eZnXud3VzgDuavSE5273zjqct0430vAU/edit?usp=sharing&ouid=114241357172211901990&rtpof=true&sd=true
 - **Demo - Youtube Video**: https://youtu.be/o8XeGBa-4OE
 - **Streamlit Application**: http://34.230.153.81:8501/
 - **Airflow**: http://34.232.87.178:8080/
