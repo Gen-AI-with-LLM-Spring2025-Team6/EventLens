@@ -85,7 +85,7 @@ class EventRecommendationGraph:
             - "Can you tell me more about it?" (about a previously mentioned event)
             - "What are people saying about it?" (asking for reviews)
 
-            This classification MUST consider the ENTIRE conversation history to identify follow-up questions.
+            This classification MUST consider the ENTIRE conversation history to identify follow-up questions. 
 
             Return ONLY "relevant" or "not_relevant" - nothing else., no additional text strictly.
         """
@@ -695,6 +695,7 @@ Is this query relevant to Boston events, considering the conversation history?""
             I can't help with general knowledge questions or topics unrelated to Boston events.
             
             Could you please ask me about events, activities, or venues in Boston instead?"""
+            
             
             # Create message objects
             human_msg = HumanMessage(content=message)
