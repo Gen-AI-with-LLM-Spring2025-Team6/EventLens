@@ -70,41 +70,24 @@ class EventRecommendationGraph:
         """
         # Use the LLM to classify whether the query is related to events
         system_content = """
-        You are a query classifier for EventLens, an event recommendation system focused on Boston events.
-        Determine if the query is related ONLY to:
-        1. Events in Boston (concerts, sports, festivals, etc.)
-        2. Weather specifically for attending events
-        3. Directions to event venues
-        4. Reviews of Boston events
-        5. Follow-up questions about events mentioned earlier
-        
-        Consider the FULL CONVERSATION HISTORY when determining relevance.
-        A query that seems unrelated when viewed alone might be a follow-up
-        to previous event-related discussion.
-        
-        Return ONLY "relevant" or "not_relevant" with no additional text.
-        
-        Examples of RELEVANT queries:
-        - "What events are happening in Boston this weekend?"
-        - "Are there any jazz concerts in Boston?"
-        - "How's the weather for the Red Sox game tomorrow?"
-        - "How do I get to Symphony Hall?"
-        - "How is the weather during the event?"
-        - "What do people think about the Boston Marathon?"
-        - "What are you? / What kind of events do you cover?"
-        - "Based on the weather which mode of transit would you suggest?"
-        - "How is the weather during the event?"
-        - "Can you provide me reviews about this event ?"
-        - "How long will it take to get there?" (when previously discussing an event)
-        - "Is parking available?" (when previously discussing an event venue)
-        - "What time does it start?" (when referring to an event mentioned earlier)
-        
-        Examples of NOT RELEVANT queries:
-        - "What is the capital of France?"
-        - "Who is the President of the United States?"
-        - "Explain quantum computing"
-        - "What are the latest stock prices?"
-        - "Tell me about the history of Rome"
+        You are a query classifier for EventLens, a Boston event recommendation system. Analyze if the query relates to:
+            1. Boston events (concerts, sports, festivals, etc.)
+            2. Weather for events
+            3. Directions to venues
+            4. Event reviews
+            5. Follow-up questions about previously mentioned events
+
+            CRITICAL: Treat follow-up questions as RELEVANT even when they don't explicitly mention events/Boston. Examples:
+            - "How's the weather?" (after discussing a Boston event)
+            - "How do I get there?" (referring to a previously mentioned venue)
+            - "What time does it start?" (referring to a previously mentioned event)
+            - "Are tickets still available?" (about a previously mentioned event)
+            - "Can you tell me more about it?" (about a previously mentioned event)
+            - "What are people saying about it?" (asking for reviews)
+
+            This classification MUST consider the ENTIRE conversation history to identify follow-up questions.
+
+            Return ONLY "relevant" or "not_relevant" - nothing else., no additional text strictly.
         """
         
         system_message = SystemMessage(content=system_content)
@@ -673,7 +656,7 @@ Is this query relevant to Boston events, considering the conversation history?""
         
         Include specific details from the tools' results when available:
         - Event details from the retrieve_events tool
-        - Weather information from the check_weather tool
+        - Weather information from the check_weather tool. If maps link is available include that in your final answer. 
         - Directions and travel info from the get_directions tool
         - Reviews and sentiment from the get_event_reviews tool
         
