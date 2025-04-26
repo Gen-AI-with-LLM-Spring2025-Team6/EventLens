@@ -47,6 +47,7 @@ def recommend_events():
                 response = requests.get(f"{FAST_API_URL}/events/recommend", headers=headers)
                 if response.status_code == 200:
                     events = response.json().get("events", [])
+                    #print(events)
                     st.session_state.recommendation_results = events
                     if not events:
                         st.warning("🚫 No recommendations available at the moment.")
@@ -70,7 +71,7 @@ def recommend_events():
                     st.image(image, caption="", use_container_width=False)
                 else:
                     fallback = load_and_resize_image(DEFAULT_IMAGE_URL)
-                    st.image(fallback, caption="Image Unavailable", use_container_width=False)
+                    st.image(fallback, use_container_width=False)
 
                 st.markdown("#### 🗓️ Event Details")
                 fields = [
@@ -95,8 +96,8 @@ def recommend_events():
                     short_desc = " ".join(desc.split()[:50]) + "..."
                     st.markdown(f"📄 <strong>Description:</strong> {short_desc}", unsafe_allow_html=True)
 
-                #if event.get("CATEGORIES"):
-                    #st.markdown(f"🏷️ <strong>Categories:</strong> {event['CATEGORIES']}", unsafe_allow_html=True)
+                if event.get("CATEGORIES"):
+                    st.markdown(f"🏷️ <strong>Categories:</strong> {event['CATEGORIES']}", unsafe_allow_html=True)
 
                 event_url = event.get("EVENT_URL")
                 if event_url:
