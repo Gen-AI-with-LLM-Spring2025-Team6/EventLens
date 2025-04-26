@@ -1,12 +1,11 @@
 # Event Lens
 
 ## Application Links
-
-- **Airflow**: http://34.232.87.178:8080/
+- **Business Poster**: https://drive.google.com/file/d/1NYmqo8_Q9mGNbSmQIywl05yb5XfP0K_D/view?usp=sharing
+- **Demo - Youtube Video**: https://youtu.be/o8XeGBa-4OE
 - **Streamlit Application**: http://34.230.153.81:8501/
+- **Airflow**: http://34.232.87.178:8080/
 - **CodeLabs**: https://codelabs-preview.appspot.com/?file_id=1DX_AJcObbNu1kcJfB7VmxRtHt1wsTYe33v6MJVLe2X0/edit?tab=t.0#0
-- **Youtube Video**: https://youtu.be/o8XeGBa-4OE
-
 ---
 
 ## Problem Statement
@@ -156,6 +155,189 @@ The Langgraph Architecture is as follows:
 - Automates:
   - Docker build and deployment
   - Continuous integration for frontend/backend
+
+### Folder Structure
+```
+📦 
+├─ .DS_Store
+├─ .github
+│  └─ workflows
+│     └─ deploy.yml
+├─ .gitignore
+├─ Dockerfile
+├─ LICENSE
+├─ POC
+│  ├─ API-POC
+│  │  ├─ MapsAPI-POC.ipynb
+│  │  ├─ SerpAPI-SentimentPOC.ipynb
+│  │  └─ WeatherAPI-POC.ipynb
+│  ├─ WebScrape-POC
+│  │  ├─ BostonCalScrapePOC.ipynb
+│  │  ├─ BostonGovScrapePOC.ipynb
+│  │  ├─ Boston_Calendar_clean_and_load.ipynb
+│  │  ├─ Classify_events_POC.ipynb
+│  │  ├─ ScrapeInsta.ipynb
+│  │  ├─ SnowFlakeCortex_POC.ipynb
+│  │  ├─ VideoContent-DetailsExtractionPOC.ipynb
+│  │  ├─ images
+│  │  │  └─ event_lens_images.jpg
+│  │  └─ videos
+│  │     └─ BostonEventsVideo.mp4
+│  └─ evidence-chat-demo
+│     ├─ embeddings.py
+│     ├─ eventlens_evidencechat
+│     │  ├─ app.py
+│     │  ├─ database
+│     │  │  ├─ __init__.py
+│     │  │  └─ snowflake_connector.py
+│     │  ├─ llm
+│     │  │  ├─ __init__.py
+│     │  │  └─ openai_client.py
+│     │  ├─ services
+│     │  │  ├─ __init__.py
+│     │  │  └─ event_service.py
+│     │  └─ utils
+│     │     ├─ __init__.py
+│     │     ├─ chat_utils.py
+│     │     └─ state_management.py
+│     ├─ evidence_chat.py
+│     ├─ full_code.txt
+│     ├─ llm_functions.py
+│     ├─ requirements.txt
+│     ├─ streamlit_app.py
+│     └─ utils.py
+├─ README.md
+├─ airflow
+│  ├─ Dockerfile
+│  ├─ __init__.py
+│  ├─ dags
+│  │  ├─ __init__.py
+│  │  ├─ boston_calendar_dag.py
+│  │  ├─ boston_central_dag.py
+│  │  ├─ boston_gov_dag.py
+│  │  ├─ boston_instagram_events_dag.py
+│  │  └─ data_load
+│  │     ├─ Meet_Boston
+│  │     │  ├─ Load_to_staging
+│  │     │  └─ Scrape_events.py
+│  │     ├─ __init__.py
+│  │     ├─ boston_calendar
+│  │     │  ├─ __init__.py
+│  │     │  ├─ load_to_edw.py
+│  │     │  ├─ load_to_staging.py
+│  │     │  ├─ process_images.py
+│  │     │  └─ scrape_events.py
+│  │     ├─ boston_central
+│  │     │  ├─ __init__.py
+│  │     │  ├─ files
+│  │     │  │  └─ boston_events.csv
+│  │     │  ├─ load_to_edw.py
+│  │     │  ├─ load_to_staging.py
+│  │     │  └─ scrape_events.py
+│  │     ├─ boston_gov
+│  │     │  ├─ __init__.py
+│  │     │  ├─ load_to_edw.py
+│  │     │  ├─ load_to_staging.py
+│  │     │  ├─ process_images.py
+│  │     │  └─ scrape_events.py
+│  │     ├─ boston_instagram_events
+│  │     │  ├─ __init__.py
+│  │     │  ├─ load_to_edw.py
+│  │     │  ├─ load_to_staging.py
+│  │     │  ├─ process_media.py
+│  │     │  └─ scrape_events.py
+│  │     ├─ connectors
+│  │     │  ├─ db_connection.py
+│  │     │  └─ s3_connection.py
+│  │     ├─ helpers
+│  │     │  ├─ metrics.py
+│  │     │  └─ utils.py
+│  │     └─ parameters
+│  │        ├─ __init__.py
+│  │        └─ parameter_config.py
+│  ├─ entrypoint.sh
+│  └─ requirements.txt
+├─ architecture-diagram
+│  ├─ .DS_Store
+│  ├─ airflow_dags.png
+│  ├─ architecture_diagram.ipynb
+│  ├─ event_classification_workflow.png
+│  ├─ front-end_architecture.png
+│  └─ input_icons
+│     ├─ .DS_Store
+│     ├─ OpenAI.png
+│     ├─ all_other_files.png
+│     ├─ bs.jpg
+│     ├─ bs.png
+│     ├─ docker.png
+│     ├─ docs.png
+│     ├─ ec2.png
+│     ├─ fastapi.png
+│     ├─ github_actions.png
+│     ├─ jwt.png
+│     ├─ langchain.png
+│     ├─ langgraph.png
+│     ├─ md.png
+│     ├─ pinecone.png
+│     ├─ python.png
+│     ├─ reject.png
+│     ├─ snowflake.png
+│     ├─ streamlit.png
+│     ├─ terraform.png
+│     ├─ user-authentication.png
+│     ├─ user.png
+│     └─ web.png
+├─ fastapi_backend
+│  ├─ eventlens_agent
+│  │  ├─ __init__.py
+│  │  ├─ graph.py
+│  │  ├─ main.py
+│  │  ├─ state.py
+│  │  └─ tools
+│  │     ├─ __init__.py
+│  │     ├─ maps_api.py
+│  │     ├─ rag_data_retreival_api.py
+│  │     ├─ sentiment_serpapi.py
+│  │     └─ weather_api.py
+│  └─ fast_api
+│     ├─ .DS_Store
+│     ├─ config
+│     │  └─ db_connection.py
+│     ├─ fast_api.py
+│     ├─ routes
+│     │  ├─ chat_routes.py
+│     │  ├─ recommendation_routes.py
+│     │  ├─ search_routes.py
+│     │  └─ user_routes.py
+│     ├─ schema
+│     │  └─ request_schema.py
+│     ├─ services
+│     │  ├─ auth_service.py
+│     │  ├─ chat_service.py
+│     │  ├─ rag_search_service.py
+│     │  ├─ recommendation_service.py
+│     │  ├─ search_service.py
+│     │  └─ user_service.py
+│     └─ utils
+│        ├─ log_search.py
+│        ├─ open_ai_calls.py
+│        └─ snowflake_queries.py
+├─ requirements.txt
+└─ streamlit_frontend
+   ├─ auth
+   │  ├─ Login.py
+   │  ├─ Logout.py
+   │  └─ Register.py
+   ├─ features
+   │  ├─ events_chatbot.py
+   │  ├─ recommend_events.py
+   │  └─ search_events.py
+   ├─ streamlit_app.py
+   └─ utils
+      ├─ s3_retreival.py
+      └─ validate_fields.py
+```
+©generated by [Project Tree Generator](https://woochanleee.github.io/project-tree-generator)
 
 ---
 
