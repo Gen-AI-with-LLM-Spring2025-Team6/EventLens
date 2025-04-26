@@ -5,6 +5,7 @@
 - **Airflow**: http://34.230.153.81:8080/
 - **Streamlit Application**: http://34.230.153.81:8501/
 - **CodeLabs**: https://codelabs-preview.appspot.com/?file_id=1DX_AJcObbNu1kcJfB7VmxRtHt1wsTYe33v6MJVLe2X0/edit?tab=t.0#0
+- **Youtube Video**: https://youtu.be/o8XeGBa-4OE
 
 ---
 
