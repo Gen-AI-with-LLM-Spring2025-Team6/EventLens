@@ -57,6 +57,10 @@ def login():
                     st.error("Unauthorized. Please check your credentials.")
                 elif response.status_code == 404:
                     st.error("User not found. Please register first.")
+                elif response.status_code == 500:
+                    st.error("Check your username and password.")
+                elif response.status_code == 402:
+                    st.error("Check your username and password.")
                 else:
                     st.error(f"Login failed. Status code: {response.status_code}")
 

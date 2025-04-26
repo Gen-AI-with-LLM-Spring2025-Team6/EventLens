@@ -3,7 +3,7 @@ import requests
 import os
 import time
 
-st.set_page_config(page_title="EventLens Chatbot", layout="wide")
+#st.set_page_config(page_title="EventLens Chatbot", layout="wide")
 
 FAST_API_URL = os.getenv("FAST_API_URL")
 
